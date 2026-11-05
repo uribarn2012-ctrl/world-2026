@@ -145,19 +145,19 @@ const landOf = x => (S.cl && S.cl[x.id]) || S.owner[x.tid] || null;
 var CLT = null; // tid -> all cities on it, only for territories that have ceded land
 function clIdx() {
   if (CLT) return CLT; CLT = {};
-  if (S && S.cl) for (const id in S.cl) { const x = CITYI[id]; if (x && !CLT[x.tid]) CLT[x.tid] = CITY.filter(y => y.tid === x.tid && isFinite(y.mx)); }
+  if (S && S.cl) for (const id in S.cl) { const x = CITYI[id]; if (x && !CLT[x.tid]) CLT[x.tid] = CITY.filter(y => y.tid === x.tid && isFinite(y.fx)); }
   // a city's land reaches at most CL_KM from it (so one city never takes most of a big country); mr = that radius on the map
-  for (const t in CLT) CLT[t].forEach(x => { const q = MAP_PROJ && MAP_PROJ([x.lon, Math.min(89, x.lat + 1)]); x.mr = q ? Math.hypot(q[0] - x.mx, q[1] - x.my) * CL_KM / 111.2 : 1e9; });
+  for (const t in CLT) CLT[t].forEach(x => { const q = FLATP && FLATP([x.lon, Math.min(89, x.lat + 1)]); x.mr = q ? Math.hypot(q[0] - x.fx, q[1] - x.fy) * CL_KM / 111.2 : 1e9; });
   return CLT;
 }
 const CL_KM = 500;
 // who owns this point of territory t (the nearest city on the map decides inside a split country)
 function ptOwner(t, lon, lat) {
   const o = S.owner[t] || null; if (!o || !S.cl) return o;
-  const l = clIdx()[t]; if (!l || !l.length || !MAP_PROJ) return o;
-  const p = MAP_PROJ([lon, lat]); if (!p) return o;
+  const l = clIdx()[t]; if (!l || !l.length || !FLATP) return o;
+  const p = FLATP([lon, lat]); if (!p) return o;
   let best = null, bd = 1e18;
-  for (const x of l) { const dx = x.mx - p[0], dy = x.my - p[1], d = dx * dx + dy * dy; if (d < bd) { bd = d; best = x; } }
+  for (const x of l) { const dx = x.fx - p[0], dy = x.fy - p[1], d = dx * dx + dy * dy; if (d < bd) { bd = d; best = x; } }
   return best && bd <= best.mr * best.mr ? landOf(best) : o;
 }
 // drop entries that no longer mean anything (the land's owner got it back, the city is gone); follow annexations
@@ -4080,6 +4080,7 @@ function addCity(x) {
   x.i = CITY.length; CITY.push(x); CITYI[x.id] = x;
   const k = cgk(Math.floor(x.lon), Math.floor(x.lat)); let a = CGRID.get(k); if (!a) CGRID.set(k, a = []); a.push(x);
   if (MAP_PROJ) { const p = MAP_PROJ([x.lon, x.lat]); x.mx = p ? p[0] : NaN; x.my = p ? p[1] : NaN; }
+  if (FLATP) { const p = FLATP([x.lon, x.lat]); x.fx = p ? p[0] : NaN; x.fy = p ? p[1] : NaN; }
 }
 function initCities() {
   CITY = []; CITYI = {}; CGRID.clear(); CBY = null;
@@ -4364,10 +4365,11 @@ function deskMapHooks() {
     const uk = ev.target.closest && ev.target.closest('[data-k]'), ci = ev.target.closest && ev.target.closest('[data-ci]');
     if (uk) { onUnitTap(uk.getAttribute('data-k')); return; }
     if (ci && CITYI[ci.getAttribute('data-ci')]) { cityModeTap(CITYI[ci.getAttribute('data-ci')]); return; }
-    modeTap(evLonLat(ev), ev.target.getAttribute && ev.target.getAttribute('data-t'));
+    const ll = evLonLat(ev); if (!ll) return;
+    modeTap(ll, ev.target.getAttribute && ev.target.getAttribute('data-t'));
   });
 }
-function zoomBy(f) { if (svg) svg.transition().duration(250).call(zoom.scaleBy, f); }
+function zoomBy(f) { if (GP) { globeTo(gC, curK * f, 250, true); return; } if (svg) svg.transition().duration(250).call(zoom.scaleBy, f); }
 function showKeys() {
   const r = (k, t) => '<tr><td>' + k + '</td><td>' + t + '</td></tr>';
   modal({ title: 'קיצורי מקלדת ועכבר', html: '<table class="keys">' +
@@ -4389,12 +4391,13 @@ const PAN = { KeyW: [0, 1], ArrowUp: [0, 1], KeyS: [0, -1], ArrowDown: [0, -1], 
 // smooth keyboard panning: held keys move the map every frame, with a short ease-in
 const panKeys = new Set(); let panRaf = 0, panT = 0, panFast = false, panV = 0;
 function panStep(t) {
-  if (!panKeys.size || !svg) { panRaf = 0; panV = 0; if (svg) { zooming = false; drawCities(); } return; }
+  if (!panKeys.size || !svg) { panRaf = 0; panV = 0; if (svg) { if (GP) gEnd(); else { zooming = false; drawCities(); } } return; }
   const dt = panT ? Math.min(0.05, (t - panT) / 1000) : 1 / 60; panT = t;
   panV = Math.min(1, panV + dt * 6);   // reaches full speed in ~0.17s
   let dx = 0, dy = 0; panKeys.forEach(c => { dx += PAN[c][0]; dy += PAN[c][1]; });
   const n = Math.hypot(dx, dy) || 1, sp = (panFast ? 1500 : 650) * panV * dt / curK;
-  svg.call(zoom.translateBy, dx / n * sp, dy / n * sp);
+  if (GP) { const f = sp * DEG / GR; gStop(); zooming = true; hideTip(); gC = [gC[0] - dx / n * f / Math.max(0.35, Math.cos(gC[1] / DEG)), clamp(gC[1] + dy / n * f, -85, 85)]; gReq(); }
+  else svg.call(zoom.translateBy, dx / n * sp, dy / n * sp);
   panRaf = requestAnimationFrame(panStep);
 }
 document.addEventListener('keyup', ev => { panKeys.delete(ev.code); panFast = ev.shiftKey; });
@@ -4448,18 +4451,25 @@ function initMap() {
   W = box.clientWidth || 360; H = box.clientHeight || 500;
   svg = d3.select('#map').append('svg').attr('id', 'mapsvg').attr('viewBox', [0, 0, W, H].join(' ')).attr('preserveAspectRatio', 'xMidYMid meet');
   gRoot = svg.append('g');
-  const projection = d3.geoNaturalEarth1();
+  let projection = d3.geoNaturalEarth1();
   const visible = { type: 'FeatureCollection', features: FEATS.filter(f => !HIDDEN.has(f.properties.tid)) };
   const DK = isDesk(), topPad = DK ? 72 : 98, botPad = DK ? 14 : 72;
   projection.fitExtent([[6, topPad], [W - 6, H - botPad]], visible);
+  FLATP = projection;
+  // the 3D globe (default) - if anything goes wrong on this device, the flat map still works
+  GP = null; GF = [];
+  if (GLOBE) { try { projection = globeProj(projection.scale()); } catch (e) { GLOBE = false; GP = null; projection = d3.geoNaturalEarth1().fitExtent([[6, topPad], [W - 6, H - botPad]], visible); } }
+  $('#map').classList.toggle('globe', !!GP); gStars(); document.querySelectorAll('.gtg').forEach(b => { b.textContent = GP ? '🗺️' : '🌍'; });
   pathGen = d3.geoPath(projection); if (pathGen.digits) pathGen.digits(1);
-  gRoot.append('path').datum({ type: 'Sphere' }).attr('class', 'sphere').attr('d', pathGen);
-  gRoot.append('path').datum(d3.geoGraticule10()).attr('class', 'grat').attr('d', pathGen);
+  if (GP) globeBack();
+  else gRoot.append('path').datum({ type: 'Sphere' }).attr('class', 'sphere').attr('d', pathGen);
+  gGrat = gRoot.append('path').datum(d3.geoGraticule10()).attr('class', 'grat').attr('d', GP ? null : pathGen).node();
   gLand = gRoot.append('g').attr('class', 'land');
   visible.features.forEach(f => {
     const t = f.properties.tid;
-    const el = gLand.append('path').attr('d', pathGen(f)).attr('data-t', t).node();
+    const el = gLand.append('path').attr('d', GP ? null : pathGen(f)).attr('data-t', t).node();
     (pathByTid[t] = pathByTid[t] || []).push(el);
+    if (GP) GF.push(gFeat(f, el));
   });
   gCeded = gRoot.append('g').attr('class', 'ceded').node(); drawCeded.k = null;
   d3.select(gCeded).on('click', ev => {
@@ -4473,6 +4483,7 @@ function initMap() {
     onMapTap(t);
   });
   gScorch = gRoot.append('g').attr('class', 'scorch'); scorchDirty = true;
+  decoInit();
   gMarks = gRoot.append('g').attr('class', 'marks');
   // cities: their own screen-space layer under the units (taps: units first, then cities, then the country)
   gCities = svg.append('g').attr('class', 'cities').node(); cityT0 = null; citiesDirty = true; CEL.clear();
@@ -4501,15 +4512,426 @@ function initMap() {
   zoom = d3.zoom().scaleExtent([0.8, 60]).translateExtent([[-W, -H], [W * 2, H * 2]])
     .on('start', () => { zooming = true; hideTip(); })
     .on('zoom', ev => { gRoot.attr('transform', ev.transform); curT = ev.transform; if (Math.abs(ev.transform.k - curK) > 0.01) { curK = ev.transform.k; scaleMarks(); if (fanIds && Math.abs(curK / fanK - 1) > 0.25) fanIds = null; } drawUnits(); cityFollow(); })
-    .on('end', () => { if (panRaf) return; zooming = false; if (!cityT0 || cityT0.x !== curT.x || cityT0.y !== curT.y || cityT0.k !== curT.k) drawCities(); });
-  svg.call(zoom).on('dblclick.zoom', null);
-  MAP_PROJ = projection;
+    .on('end', () => { if (panRaf) return; zooming = false; if (Math.abs(curK - (drawDeco.k || 0)) > 0.01) drawDeco(); if (!cityT0 || cityT0.x !== curT.x || cityT0.y !== curT.y || cityT0.k !== curT.k) drawCities(); });
+  if (GP) { MAP_PROJ = globeWrap(GP); globeHooks(); }
+  else { svg.call(zoom).on('dblclick.zoom', null); MAP_PROJ = projection; }
   deskMapHooks();
   projCities();
   initFx();
-  if (!(S && S.player) && W < 900) svg.call(zoom.transform, d3.zoomIdentity.translate(0, H * 0.22 - (topPad + H - botPad) / 2));
+  if (GP) globeStartView();
+  else if (!(S && S.player) && W < 900) svg.call(zoom.transform, d3.zoomIdentity.translate(0, H * 0.22 - (topPad + H - botPad) / 2));
+  drawDeco();
 }
-let MAP_PROJ = null;
+let MAP_PROJ = null, FLATP = null;
+/* ---- 3D globe (default view): orthographic projection; drag rotates, pinch / wheel zooms ----
+   The map keeps the same coordinate system as the flat map: projection points (map units) inside gRoot,
+   which is scaled by curK. Panning becomes a rotation of the globe, so after each move everything is re-projected. */
+let GLOBE = (() => { try { return localStorage.getItem('world2026_globe') !== '0'; } catch (e) { return true; } })();
+let CLOUDS = (() => { try { return localStorage.getItem('world2026_clouds') !== '0'; } catch (e) { return true; } })();
+let gLastType = '', GP = null, GR = 100, gC = [35, 28], gSX = 0, gSY = 0, gKmin = 0.5, gKfit = 1, gKeep = 0, gAnim = 0, gRaf = 0, gInert = 0, gDrag = null, gSupT = 0, gLastTap = null, GF = [], gGrat = null, gDeco = null, gWheelT = 0;
+const gPtr = new Map(), DEG = 180 / Math.PI, GRAT = d3.geoGraticule().step([15, 15]).precision(3)();
+let gCos = [0, 1, 0];
+function gSetC() { gCos = [Math.sin(gC[1] / DEG), Math.cos(gC[1] / DEG), gC[0] / DEG]; }
+// cosine of the angle between a point and the middle of the view (> 0 = on the side facing us)
+function gFront(p) { const f = p[1] / DEG; return gCos[0] * Math.sin(f) + gCos[1] * Math.cos(f) * Math.cos(p[0] / DEG - gCos[2]); }
+function globeProj(flatScale) {
+  GR = flatScale;
+  GP = d3.geoOrthographic().scale(GR).translate([W / 2, H / 2]).clipAngle(90).precision(0.6);
+  gKfit = Math.min(W, H) * 0.46 / GR; gKmin = gKfit * 0.5;
+  if (S && S.player && !gKeep) { const t = mainTid(S.player); if (t && TERR[t]) gC = [TERR[t].c[0], clamp(TERR[t].c[1], -70, 70)]; }
+  curK = clamp(gKeep || gKfit, gKmin, 60); gSX = W / 2; gSY = H / 2;
+  gSetC(); GP.rotate([-gC[0], -gC[1]]);
+  return GP;
+}
+function globeWrap(gp) {
+  const f = p => (p && gFront(p) > 0.004) ? gp(p) : null;
+  f.invert = q => (q && Math.hypot(q[0] - W / 2, q[1] - H / 2) < GR * 0.999) ? gp.invert(q) : null;
+  return f;
+}
+// one record per country shape, split into its polygons: each has its centre and size on the sphere, so a polygon
+// out of view is skipped, one fully on our side is projected by a fast direct formula, and only those crossing the
+// edge of the globe go through d3's clipping
+function gFeat(f, el) {
+  const g = f.geometry, polys = !g ? [] : g.type === 'Polygon' ? [g.coordinates] : g.type === 'MultiPolygon' ? g.coordinates : [];
+  const P = polys.map(rings => {
+    const c = d3.geoCentroid({ type: 'Polygon', coordinates: rings }); let r = 0;
+    for (const q of rings[0]) { const d = d3.geoDistance(c, q); if (d > r) r = d; }
+    return { rings, c, r: r + 0.004, fr: null, sr: null, sg: null };
+  });
+  const c = d3.geoCentroid(f); let r = 0; P.forEach(q => { r = Math.max(r, d3.geoDistance(c, q.c) + q.r); });
+  return { f, el, P, c, r, d: null };
+}
+// each point as sin/cos of its longitude and latitude, so projecting needs no trigonometry per point
+const gPack = rings => rings.map(rg => { const a = new Float64Array(rg.length * 4); rg.forEach((q, i) => { const f = q[1] / DEG, l = q[0] / DEG; a[i * 4] = Math.sin(l); a[i * 4 + 1] = Math.cos(l); a[i * 4 + 2] = Math.sin(f); a[i * 4 + 3] = Math.cos(f); }); return a; });
+function gSimpRings(rings, eps) {
+  const ring = r => {
+    if (r.length <= 10) return r;
+    const o = [r[0]]; let l = r[0];
+    for (let i = 1; i < r.length - 1; i++) { const q = r[i]; if (Math.abs(q[0] - l[0]) + Math.abs(q[1] - l[1]) > eps) { o.push(q); l = q; } }
+    o.push(r[r.length - 1]);
+    if (o.length >= 5) return o;
+    const n = r.length; return [r[0], r[Math.floor(n / 3)], r[Math.floor(2 * n / 3)], r[0]];
+  };
+  const out = rings.map(ring);
+  // a ring that turned inside out would paint the whole globe: keep the full shape then
+  try { const a0 = d3.geoArea({ type: 'Polygon', coordinates: rings }), a1 = d3.geoArea({ type: 'Polygon', coordinates: out }); if (!(Math.abs(a1 - a0) < a0 * 0.4 + 2e-5)) return rings; } catch (e) { return rings; }
+  return out;
+}
+// orthographic projection done by hand (same result as d3's for points on our side), dropping points closer than tol
+// a round area of the sphere (the night side) on the globe, worked out directly: its edge circle in 3D,
+// with the part behind the globe laid along the globe's edge
+function gCap(ctr, deg) {
+  const vec = p => { const f = p[1] / DEG, dl = p[0] / DEG - gCos[2], cp = Math.cos(f), cd = Math.cos(dl); return [cp * Math.sin(dl), gCos[1] * Math.sin(f) - gCos[0] * cp * cd, gCos[0] * Math.sin(f) + gCos[1] * cp * cd]; };
+  const a = vec(ctr), cr = Math.cos(deg / DEG), sr = Math.sin(deg / DEG);
+  let u = [a[1], -a[0], 0]; let m = Math.hypot(u[0], u[1]); if (m < 1e-6) { u = [1, 0, 0]; m = 1; } u = [u[0] / m, u[1] / m, 0];
+  const v = [a[1] * u[2] - a[2] * u[1], a[2] * u[0] - a[0] * u[2], a[0] * u[1] - a[1] * u[0]];
+  let d = '', front = 0; const R = GR, cx = W / 2, cy = H / 2;
+  for (let i = 0; i < 96; i++) {
+    const t = i / 96 * 2 * Math.PI, c = Math.cos(t), s = Math.sin(t);
+    let x = a[0] * cr + sr * (u[0] * c + v[0] * s), y = a[1] * cr + sr * (u[1] * c + v[1] * s); const z = a[2] * cr + sr * (u[2] * c + v[2] * s);
+    if (z < 0) { const n = Math.hypot(x, y) || 1; x /= n; y /= n; } else front++;
+    d += (i ? 'L' : 'M') + (cx + R * x).toFixed(1) + ',' + (cy - R * y).toFixed(1);
+  }
+  if (!front && a[2] < 0) return '';
+  return d + 'Z';
+}
+// lines (the graticule): only the parts on our side
+let GRATP = null;
+function gFastLines(q) {
+  if (!GRATP) GRATP = gPack(GRAT.coordinates);
+  const l0 = gCos[2], sl0 = Math.sin(l0), cl0 = Math.cos(l0), s0 = gCos[0], c0 = gCos[1], R = GR, cx = W / 2, cy = H / 2; let out = '';
+  for (const a of GRATP) {
+    let pen = false;
+    for (let i = 0; i < a.length; i += 4) {
+      const cp = a[i + 3], sp = a[i + 2], cd = a[i + 1] * cl0 + a[i] * sl0, sd = a[i] * cl0 - a[i + 1] * sl0;
+      if (s0 * sp + c0 * cp * cd < 0) { pen = false; continue; }
+      out += (pen ? 'L' : 'M') + Math.round((cx + R * cp * sd) * q) / q + ',' + Math.round((cy - R * (c0 * sp - s0 * cp * cd)) * q) / q; pen = true;
+    }
+  }
+  return out;
+}
+// clamp: points behind the globe are pushed out to its edge (a quick stand-in for real clipping while dragging)
+// far outside the screen much bigger steps are fine (nothing there is seen)
+let gVR = [-1e9, -1e9, 1e9, 1e9], gTolOff = 0;
+function gFast(rings, tol, q, clamp) {
+  const l0 = gCos[2], sl0 = Math.sin(l0), cl0 = Math.cos(l0), s0 = gCos[0], c0 = gCos[1], R = GR, cx = W / 2, cy = H / 2, [rx0, ry0, rx1, ry1] = gVR, to = Math.max(tol, gTolOff); let out = '';
+  for (const a of rings) {
+    let lx = 1e9, ly = 1e9, n = 0, s = '', lo = false; const N = a.length - 4;
+    for (let i = 0; i <= N; i += 4) {
+      const cp = a[i + 3], sp = a[i + 2], cd = a[i + 1] * cl0 + a[i] * sl0;
+      let px = cp * (a[i] * cl0 - a[i + 1] * sl0), py = c0 * sp - s0 * cp * cd;
+      if (clamp && s0 * sp + c0 * cp * cd < 0) { const m = Math.hypot(px, py) || 1; px /= m; py /= m; }
+      const x = cx + R * px, y = cy - R * py, out_ = x < rx0 || x > rx1 || y < ry0 || y > ry1;
+      if (i && i < N && Math.abs(x - lx) + Math.abs(y - ly) < (out_ && lo ? to : tol)) continue;
+      s += (n ? 'L' : 'M') + Math.round(x * q) / q + ',' + Math.round(y * q) / q; lx = x; ly = y; lo = out_; n++;
+    }
+    if (n >= 3) out += s + 'Z';
+  }
+  return out;
+}
+// ocean, atmosphere glow and the shading of the edge (they never move: the sphere is always the same circle)
+function globeBack() {
+  const sv = svg.node(), defs = sEl('defs', {}, null); sv.insertBefore(defs, sv.firstChild);
+  defs.innerHTML = '<radialGradient id="gOcean" cx="44%" cy="38%" r="66%"><stop offset="0" stop-color="#1f5585"/><stop offset=".55" stop-color="#123a5e"/><stop offset="1" stop-color="#07182a"/></radialGradient>' +
+    '<radialGradient id="gGlow" r="50%"><stop offset=".86" stop-color="#6cc4ff" stop-opacity=".0"/><stop offset=".885" stop-color="#7fd0ff" stop-opacity=".55"/><stop offset=".93" stop-color="#3f8fd8" stop-opacity=".18"/><stop offset="1" stop-color="#1b4f8a" stop-opacity="0"/></radialGradient>' +
+    '<radialGradient id="gLimb" cx="42%" cy="36%" r="64%"><stop offset=".5" stop-color="#000" stop-opacity="0"/><stop offset=".82" stop-color="#000814" stop-opacity=".22"/><stop offset="1" stop-color="#000814" stop-opacity=".6"/></radialGradient>' +
+    '<radialGradient id="gShine" cx="36%" cy="30%" r="40%"><stop offset="0" stop-color="#bfe3ff" stop-opacity=".10"/><stop offset="1" stop-color="#bfe3ff" stop-opacity="0"/></radialGradient>';
+  const g = gRoot.node();
+  sEl('circle', { class: 'gglow', cx: W / 2, cy: H / 2, r: GR * 1.12, fill: 'url(#gGlow)' }, g);
+  sEl('circle', { class: 'sphere gsph', cx: W / 2, cy: H / 2, r: GR, style: 'fill:url(#gOcean)' }, g);
+}
+// layers drawn over the land: clouds, the night side, city lights, the edge shading
+function decoInit() {
+  const g = gRoot.append('g').attr('class', 'deco').node();
+  gDeco = {
+    c1: sEl('path', { class: 'cld1' }, g), c2: sEl('path', { class: 'cld2' }, g),
+    n1: sEl('path', { class: 'night' }, g), n2: sEl('path', { class: 'night' }, g),
+    l1: sEl('path', { class: 'lit1' }, g), l2: sEl('path', { class: 'lit2' }, g)
+  };
+  if (GP) { gDeco.limb = sEl('circle', { class: 'glimb', cx: W / 2, cy: H / 2, r: GR, fill: 'url(#gLimb)' }, g); sEl('circle', { class: 'glimb', cx: W / 2, cy: H / 2, r: GR, fill: 'url(#gShine)' }, g); }
+}
+// the sun: its latitude follows the game's season; it goes round the world slowly (≈24 real minutes, a bit faster while time runs)
+let gSunLon = (() => { const n = new Date(); return 180 - (n.getUTCHours() + n.getUTCMinutes() / 60) * 15; })(), LIGHTS = null, CLD = null;
+function sunPt() {
+  const day = S ? S.day + clamp(acc || 0, 0, 1) : 0;
+  return [((gSunLon % 360) + 540) % 360 - 180, -23.44 * Math.cos(2 * Math.PI * ((day % 365.25) + 10) / 365.25)];
+}
+function cloudsInit() {
+  CLD = []; let sd = 20261;
+  const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 26; i++) {
+    const lat = (rnd() * 2 - 1) * (rnd() < 0.5 ? 62 : 35), parts = [], n = 3 + Math.floor(rnd() * 4), len = 6 + rnd() * 16;
+    for (let j = 0; j < n; j++) parts.push([(j / (n - 1) - 0.5) * len + (rnd() - 0.5) * 3, (rnd() - 0.5) * 5, 2.2 + rnd() * 4.5]);
+    CLD.push({ lon: rnd() * 360 - 180, lat, parts, sp: 0.5 + rnd() * 0.7 });
+  }
+}
+const circD = (x, y, r) => 'M' + (x - r).toFixed(2) + ',' + y.toFixed(2) + 'a' + r.toFixed(2) + ',' + r.toFixed(2) + ' 0 1,0 ' + (2 * r).toFixed(2) + ',0a' + r.toFixed(2) + ',' + r.toFixed(2) + ' 0 1,0 ' + (-2 * r).toFixed(2) + ',0';
+function drawDeco() {
+  if (!gDeco || !pathGen || !gDeco.n1.isConnected) return;
+  drawDeco.k = curK;
+  const sp = sunPt(), anti = [sp[0] + 180, -sp[1]];
+  gDeco.n1.setAttribute('d', GP ? gCap(anti, 90) : pathGen(d3.geoCircle().center(anti).radius(90).precision(2)()) || '');
+  gDeco.n2.setAttribute('d', GP ? gCap(anti, 81) : pathGen(d3.geoCircle().center(anti).radius(81).precision(2)()) || '');
+  // city lights on the night side, bigger for bigger cities
+  let a = '', b = '';
+  if (FXMODE !== 'off' && CITY.length) {
+    if (!LIGHTS || LIGHTS.n !== CITY.length) { LIGHTS = CITY.slice().sort((p, q) => (q.pop || 0) - (p.pop || 0)).slice(0, isDesk() ? 480 : 280); LIGHTS.n = CITY.length; }
+    const sa = Math.sin(anti[1] / DEG), ca = Math.cos(anti[1] / DEG), la = anti[0] / DEG, z = 1 / curK;
+    for (const x of LIGHTS) {
+      if (!(x.mx === x.mx)) continue;
+      const f = x.lat / DEG, cn = sa * Math.sin(f) + ca * Math.cos(f) * Math.cos(x.lon / DEG - la); if (cn < 0.06) continue;
+      const r = (0.9 + Math.sqrt(Math.max(0.05, x.pop || 0.1)) * 0.75) * Math.min(1, cn * 4) * z;
+      a += circD(x.mx, x.my, r * 2.8); b += circD(x.mx, x.my, r * 0.75);
+    }
+  }
+  gDeco.l1.setAttribute('d', a); gDeco.l2.setAttribute('d', b);
+  // a few soft clouds drifting east (globe only; not with reduced animations)
+  let c1 = '', c2 = '';
+  if (GP && CLOUDS && FXMODE === 'full') {
+    if (!CLD) cloudsInit();
+    // the cloud shapes are rebuilt twice a second at most (they drift slowly); turning the globe only re-projects them
+    const t = performance.now() / 1000;
+    if (!CLD.g || t - CLD.t > 1.5) {
+      CLD.t = t; const A = [], B = [], M = [], gc = d3.geoCircle().precision(15);
+      for (const cl of CLD) for (const [dx, dy, r] of cl.parts) {
+        const c = [cl.lon + dx + t * cl.sp * 0.35, cl.lat + dy];
+        A.push(gc.center(c).radius(r * 1.35)().coordinates); B.push(gc.center(c).radius(r)().coordinates); M.push([c, r * 1.35 / DEG, r / DEG]);
+      }
+      CLD.g = [{ type: 'MultiPolygon', coordinates: A }, { type: 'MultiPolygon', coordinates: B }]; CLD.m = M; CLD.pk = [null, A.map(gPack), B.map(gPack)];
+    }
+    const H2 = Math.PI / 2 - 0.01, pr = (G, i) => { let d = ''; const back = []; G.coordinates.forEach((P, j) => { const m = CLD.m[j], f = gFront(m[0]); if (f > Math.cos(H2 - m[i])) d += gFast(CLD.pk[i][j], 1.2 / curK, 10); else if (f > -Math.sin(m[i])) d += gFast(CLD.pk[i][j], 1.2 / curK, 10, true); }); return d; };
+    c1 = pr(CLD.g[0], 1); c2 = pr(CLD.g[1], 2);
+  }
+  gDeco.c1.setAttribute('d', c1); gDeco.c2.setAttribute('d', c2);
+}
+let STARIMG = null;
+function gStars() {
+  const m = $('#map'); if (!m) return;
+  const on = !!GP && FXMODE !== 'off';
+  if (on && !STARIMG) {
+    try {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 512; const c = cv.getContext('2d');
+      let sd = 777; const rnd = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+      for (let i = 0; i < 260; i++) { const r = rnd() < 0.08 ? 1.3 : 0.7; c.globalAlpha = 0.25 + rnd() * 0.6; c.fillStyle = rnd() < 0.15 ? '#ffe7c2' : '#dfe9ff'; c.beginPath(); c.arc(rnd() * 512, rnd() * 512, r, 0, 6.283); c.fill(); }
+      STARIMG = cv.toDataURL();
+    } catch (e) { STARIMG = ''; }
+  }
+  m.style.backgroundImage = on && STARIMG ? 'url(' + STARIMG + '), radial-gradient(ellipse at 50% 45%, #0b1626 0%, #03060c 75%)' : (GP ? 'radial-gradient(ellipse at 50% 45%, #0b1626 0%, #03060c 75%)' : '');
+  m.style.backgroundSize = on && STARIMG ? '512px 512px, cover' : '';
+}
+// night side, lights and clouds move on their own: redraw now and then while the map is still
+function gTick(t) {
+  const dt = gTick.t ? Math.min(0.25, (t - gTick.t) / 1000) : 0; gTick.t = t;
+  gSunLon -= dt * 0.25 * (S && S.speed > 0 ? 1.6 : 1);
+  if (zooming || t - (gTick.d || 0) < (GP ? 450 : 2500)) return;
+  gTick.d = t; drawDeco();
+}
+/* ---- re-projecting the globe ---- */
+function gXf() { const k = curK; curT = d3.zoomIdentity.translate(gSX - k * W / 2, gSY - k * H / 2).scale(k); gRoot.attr('transform', curT); }
+function gRender(low) {
+  if (!GP || !svg) return;
+  gSetC(); GP.rotate([-gC[0], -gC[1]]);
+  const k = curK; gXf();
+  const m = 30 / k, x0 = -curT.x / k, y0 = -curT.y / k;
+  GP.clipExtent([[x0 - m, y0 - m], [x0 + W / k + m, y0 + H / k + m]]);
+  if (pathGen.digits) pathGen.digits(k < 4 ? 1 : k < 30 ? 2 : 3);
+  // how far from the middle of the view the screen reaches, as an angle on the sphere
+  const D = Math.hypot(Math.max(gSX, W - gSX), Math.max(gSY, H - gSY)), ang = D >= GR * k ? Math.PI / 2 : Math.asin(D / (GR * k));
+  // while moving: lighter shapes, fewer points and no curve smoothing; full detail when the view settles
+  GP.precision(low ? 0 : 0.6);
+  const H2 = Math.PI / 2 - 0.006, tol = (low ? 1.7 : 0.45) / k, qd = k < 4 ? 10 : k < 30 ? 100 : 1000, simple = low && k < 8, eps = k < 4 ? 0.6 : 0.3;
+  gVR = [x0 - 60 / k, y0 - 60 / k, x0 + (W + 60) / k, y0 + (H + 60) / k]; gTolOff = 45 / k;
+ 
+  for (const g of GF) {
+    let d = '';
+    if (d3.geoDistance(gC, g.c) - g.r < ang + 0.03) {
+      let back = null;
+      for (const p of g.P) {
+        const dc = Math.acos(clamp(gFront(p.c), -1, 1));
+        if (dc - p.r > ang + 0.02 || dc - p.r > H2) continue;
+        const sg = simple ? (eps > 0.4 ? p.sg2 || (p.sg2 = gSimpRings(p.rings, 0.6)) : p.sg || (p.sg = gSimpRings(p.rings, 0.3))) : p.rings;
+        if (dc + p.r < H2 || (low && p.r < 1.75)) d += gFast(!simple ? p.fr || (p.fr = gPack(p.rings)) : eps > 0.4 ? p.sr2 || (p.sr2 = gPack(sg)) : p.sr || (p.sr = gPack(sg)), tol, qd, dc + p.r >= H2);
+        else (back || (back = [])).push(sg);
+      }
+      if (back) d += pathGen({ type: 'MultiPolygon', coordinates: back }) || '';
+    }
+    if (g.d !== d) { g.el.setAttribute('d', d); g.d = d; }
+  }
+  gGrat.setAttribute('d', low ? gFastLines(qd) : pathGen(GRAT) || '');
+  projCities();
+  drawDeco();
+  drawMarks(); drawScorch();
+  if (low) { if (gCeded) gCeded.style.display = 'none'; if (gCities) gCities.style.display = 'none'; }
+  svg.classed('gmove', !!low);
+  if (fanIds && Math.abs(curK / fanK - 1) > 0.25) fanIds = null;
+  drawUnits();
+}
+function gReq() { if (!gRaf) gRaf = requestAnimationFrame(() => { gRaf = 0; gRender(true); }); }
+// the view settled: full detail, the land handed over in treaties and the cities come back
+function gEnd() {
+  if (!GP) return;
+  if (gRaf) { cancelAnimationFrame(gRaf); gRaf = 0; }
+  gKeep = curK; zooming = false;
+  gRender(false);
+  if (gCeded) { gCeded.style.display = ''; drawCeded.k = null; }
+  recolor();
+  if (gCities) gCities.style.display = '';
+  drawCities();
+}
+function gStop() { if (gAnim) { cancelAnimationFrame(gAnim); gAnim = 0; } if (gInert) { cancelAnimationFrame(gInert); gInert = 0; } }
+// fly to a place: it ends up in the middle of the part of the map the panels don't cover
+function globeTo(ll, k, dur, keepC) {
+  if (!GP || !ll || !isFinite(ll[0]) || !isFinite(ll[1])) return;
+  gStop();
+  const [vx0, vy0, vx1, vy1] = visibleRect();
+  const c0 = gC.slice(), c1 = [ll[0], clamp(ll[1], -80, 80)], k0 = curK, k1 = clamp(k || curK, gKmin, 60);
+  const s0 = [gSX, gSY], s1 = keepC ? s0 : [(vx0 + vx1) / 2, (vy0 + vy1) / 2];
+  const gi = d3.geoInterpolate(c0, c1), dist = d3.geoDistance(c0, c1), t0 = performance.now(); dur = dur || 600;
+  const dip = dist > 0.35 && Math.max(k0, k1) > gKfit * 1.6 ? 0.45 : 0;
+  zooming = true; hideTip();
+  const step = t => {
+    const u = Math.min(1, (t - t0) / dur), e = d3.easeCubicInOut(u);
+    gC = gi(e); curK = Math.max(gKmin, Math.exp(Math.log(k0) + (Math.log(k1) - Math.log(k0)) * e) * (1 - dip * Math.sin(Math.PI * e)));
+    gSX = s0[0] + (s1[0] - s0[0]) * e; gSY = s0[1] + (s1[1] - s0[1]) * e;
+    if (u < 1) { gRender(true); gAnim = requestAnimationFrame(step); } else { gAnim = 0; gEnd(); }
+  };
+  gAnim = requestAnimationFrame(step);
+}
+function zoomToGeo(ll, k) { if (GP) { globeTo(ll, k, 500); return; } const p = MAP_PROJ && MAP_PROJ(ll); if (p) zoomToMapPt(p, k); }
+function gZoomTid(T, maxK) {
+  const b = d3.geoBounds(T.best); let w = b[1][0] - b[0][0]; if (w < 0) w += 360;
+  const h = b[1][1] - b[0][1], latc = (b[0][1] + b[1][1]) / 2, lonc = b[0][0] + w / 2;
+  const [vx0, vy0, vx1, vy1] = visibleRect(), vw = vx1 - vx0, vh = vy1 - vy0;
+  const sw = Math.max(0.002, w / DEG * Math.cos(latc / DEG)) * GR, sh = Math.max(0.002, h / DEG) * GR;
+  const k = clamp(0.45 / Math.max(sw / vw, sh / vh), gKfit * 0.8, Math.max(maxK || 10, gKfit));
+  globeTo([lonc, latc], k, 750);
+}
+// before the player picks a country: the whole globe, in the part of the screen above the start panel
+function globeStartView() {
+  if (S && S.player) { gRender(false); return; }
+  const [vx0, vy0, vx1, vy1] = visibleRect();
+  curK = clamp(Math.min(gKfit, 0.47 * Math.min(vx1 - vx0, vy1 - vy0) / GR), gKmin, 60);
+  gSX = (vx0 + vx1) / 2; gSY = (vy0 + vy1) / 2;
+  gRender(false);
+}
+// a line along great circles, broken where it goes behind the globe
+function gLine(pts) {
+  let d = '', pen = false;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i];
+    if (!i) { const s = toScreen(p); if (s) { d += 'M' + s[0].toFixed(1) + ',' + s[1].toFixed(1); pen = true; } continue; }
+    const q = pts[i - 1], n = Math.max(1, Math.ceil(d3.geoDistance(q, p) * DEG / 2.5)), gi = n > 1 ? d3.geoInterpolate(q, p) : null;
+    for (let j = 1; j <= n; j++) { const s = toScreen(gi ? gi(j / n) : p); if (!s) { pen = false; continue; } d += (pen ? 'L' : 'M') + s[0].toFixed(1) + ',' + s[1].toFixed(1); pen = true; }
+  }
+  return d;
+}
+// a missile / shell flying along the great circle, lifted above the surface in the middle
+function gArc(c, e, k) {
+  const gi = e.gi || (e.gi = d3.geoInterpolate(e.p0, e.p1)), L = Math.max(18, d3.geoDistance(e.p0, e.p1) * GR * curK * e.h), u = 0.6 * k + 0.4 * k * k;
+  const o0 = e.o0 || [0, 0], o1 = e.o1 || [0, 0];
+  const at = v => { const s = toScreen(gi(v)); return s ? [s[0] + o0[0] * (1 - v) + o1[0] * v, s[1] + o0[1] * (1 - v) + o1[1] * v - L * 2 * v * (1 - v)] : null; };
+  if (e.trail) {
+    const n = 9, u0 = Math.max(0, u - 0.35); c.lineWidth = e.w * 0.9; c.strokeStyle = '#d9dde3';
+    let prev = at(u0);
+    for (let j = 1; j <= n; j++) { const q = at(u0 + (u - u0) * j / n); if (prev && q) { c.globalAlpha = 0.5 * j / n; c.beginPath(); c.moveTo(prev[0], prev[1]); c.lineTo(q[0], q[1]); c.stroke(); } prev = q; }
+  }
+  const h = at(u); if (!h) return;
+  c.globalAlpha = 0.35; c.fillStyle = e.col; circ(c, h, e.w * 2.2);
+  c.globalAlpha = 1; circ(c, h, e.w);
+}
+/* ---- touch, mouse and wheel on the globe ---- */
+function gEvPt(e) { const r = svg.node().getBoundingClientRect(); return [(e.clientX - r.left) * W / (r.width || W), (e.clientY - r.top) * H / (r.height || H)]; }
+const gOnDisc = q => Math.hypot(q[0] - gSX, q[1] - gSY) <= GR * curK;
+function globeHooks() {
+  const el = svg.node();
+  el.addEventListener('pointerdown', e => {
+    if (e.button) return;   // right click = move order (desktop)
+    gStop(); const q = gEvPt(e); gPtr.set(e.pointerId, q); gLastType = e.pointerType;
+    if (gPtr.size === 1) gDrag = { p0: q, c0: gC.slice(), moved: false, last: q, lt: performance.now(), v: [0, 0], type: e.pointerType };
+    else if (gPtr.size === 2) { const [a, b] = [...gPtr.values()]; gDrag = { pinch: true, d0: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, k0: curK, m0: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2], c0: gC.slice(), moved: true }; zooming = true; hideTip(); }
+  });
+  // taps that ended a drag, and taps on empty space around the globe, do nothing
+  el.addEventListener('click', e => {
+    if (performance.now() - gSupT < 80) { e.stopPropagation(); e.preventDefault(); return; }
+    const inUI = e.target.closest && e.target.closest('.units,.cities');
+    if (!inUI && !gOnDisc(gEvPt(e))) { e.stopPropagation(); if (fanIds) { fanIds = null; drawUnits(); } }
+  }, true);
+  el.addEventListener('dblclick', e => {
+    if (gDrag || gLastType === 'touch') return;
+    const ll = evLonLat(e); if (ll) globeTo(ll, curK * 2, 400);
+  });
+  el.addEventListener('wheel', e => {
+    e.preventDefault(); gStop();
+    const q = gEvPt(e), ll0 = gOnDisc(q) ? GP.invert(curT.invert(q)) : null;
+    curK = clamp(curK * Math.pow(2, -e.deltaY * (e.deltaMode ? 0.05 : 0.0022)), gKmin, 60); gXf();
+    if (ll0) { const ll1 = GP.invert(curT.invert(q)); if (ll1 && isFinite(ll1[0]) && isFinite(ll1[1])) { let dl = ll0[0] - ll1[0]; if (dl > 180) dl -= 360; if (dl < -180) dl += 360; gC = [gC[0] + dl, clamp(gC[1] + ll0[1] - ll1[1], -85, 85)]; } }
+    zooming = true; hideTip(); gReq();
+    clearTimeout(gWheelT); gWheelT = setTimeout(gEnd, 200);
+  }, { passive: false });
+  if (globeHooks.win) return; globeHooks.win = true;
+  window.addEventListener('pointermove', e => {
+    if (!gDrag || !GP || !gPtr.has(e.pointerId)) return;
+    const q = gEvPt(e); gPtr.set(e.pointerId, q);
+    if (gDrag.pinch) {
+      if (gPtr.size < 2) return;
+      const [a, b] = [...gPtr.values()], m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      curK = clamp(gDrag.k0 * Math.hypot(a[0] - b[0], a[1] - b[1]) / gDrag.d0, gKmin, 60);
+      const f = DEG / (GR * curK);
+      gC = [gDrag.c0[0] - (m[0] - gDrag.m0[0]) * f / Math.max(0.35, Math.cos(gC[1] / DEG)), clamp(gDrag.c0[1] + (m[1] - gDrag.m0[1]) * f, -85, 85)];
+      gReq(); return;
+    }
+    const dx = q[0] - gDrag.p0[0], dy = q[1] - gDrag.p0[1];
+    if (!gDrag.moved) { if (Math.hypot(dx, dy) < 6) return; gDrag.moved = true; zooming = true; hideTip(); }
+    const now = performance.now(), dt = Math.max(1, now - gDrag.lt);
+    gDrag.v = [0.7 * (q[0] - gDrag.last[0]) / dt + 0.3 * gDrag.v[0], 0.7 * (q[1] - gDrag.last[1]) / dt + 0.3 * gDrag.v[1]]; gDrag.last = q; gDrag.lt = now;
+    const f = DEG / (GR * curK);
+    gC = [gDrag.c0[0] - dx * f / Math.max(0.35, Math.cos(gDrag.c0[1] / DEG)), clamp(gDrag.c0[1] + dy * f, -85, 85)];
+    gReq();
+  });
+  const up = e => {
+    if (!gPtr.has(e.pointerId)) return;
+    gPtr.delete(e.pointerId);
+    const d = gDrag; if (!d || !GP) { gDrag = null; return; }
+    if (d.pinch) {
+      if (gPtr.size === 1) { const q = [...gPtr.values()][0]; gDrag = { p0: q, c0: gC.slice(), moved: true, last: q, lt: performance.now(), v: [0, 0] }; return; }
+      gDrag = null; gSupT = performance.now(); gEnd(); return;
+    }
+    gDrag = null;
+    if (!d.moved) {
+      // double tap (touch) zooms in there
+      const q = gEvPt(e), now = performance.now();
+      if (e.pointerType === 'touch' && gLastTap && now - gLastTap.t < 320 && Math.hypot(q[0] - gLastTap.p[0], q[1] - gLastTap.p[1]) < 30 && gOnDisc(q)) { gLastTap = null; const ll = GP.invert(curT.invert(q)); if (ll) globeTo(ll, curK * 2, 380); return; }
+      gLastTap = { t: now, p: q, type: e.pointerType }; return;
+    }
+    gSupT = performance.now();
+    let v = d.v; const sp = Math.hypot(v[0], v[1]);
+    if (sp < 0.15 || performance.now() - d.lt > 90) { gEnd(); return; }
+    // keeps turning a little after the finger lets go
+    let last = performance.now();
+    const step = t => {
+      const dt = Math.min(40, t - last); last = t;
+      const f = DEG / (GR * curK), dec = Math.exp(-dt / 260);
+      v = [v[0] * dec, v[1] * dec];
+      gC = [gC[0] - v[0] * dt * f / Math.max(0.35, Math.cos(gC[1] / DEG)), clamp(gC[1] + v[1] * dt * f, -85, 85)];
+      gRender(true);
+      if (Math.hypot(v[0], v[1]) > 0.03) gInert = requestAnimationFrame(step); else { gInert = 0; gEnd(); }
+    };
+    gInert = requestAnimationFrame(step);
+  };
+  window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+}
+function rebuildMap() {
+  gStop(); gPtr.clear(); gDrag = null;
+  d3.select('#mapsvg').remove(); for (const k in pathByTid) delete pathByTid[k];
+  if (!GLOBE) curK = 1;
+  initMap(); drawMarks.k = null; recolor(); unitsDirty = true; drawUnits(); citiesDirty = true; drawCities();
+}
+function setGlobe(on) {
+  GLOBE = !!on; try { localStorage.setItem('world2026_globe', GLOBE ? '1' : '0'); } catch (e) { /* no storage */ }
+  gKeep = 0; rebuildMap();
+  if (S && S.player) homeView(10);
+  toast(GP ? 'גלובוס תלת־ממדי — גרור כדי לסובב' : 'מפה שטוחה');
+}
 function visibleRect() {
   // part of the map not covered by bars / panels: [x0, y0, x1, y1]
   const startOpen = $('#start').classList.contains('open'), sheetOpen = $('#sheet').classList.contains('open');
@@ -4522,6 +4944,7 @@ function visibleRect() {
 }
 function zoomToTid(t, maxK) {
   const T = TERR[t]; if (!T || !T.best || !svg) return;
+  if (GP) { gZoomTid(T, maxK); return; }
   const [[x0, y0], [x1, y1]] = pathGen.bounds(T.best);
   const [vx0, vy0, vx1, vy1] = visibleRect(), vw = vx1 - vx0, vh = vy1 - vy0;
   const [[, sy0], [, sy1]] = pathGen.bounds({ type: 'Sphere' });
@@ -4592,6 +5015,16 @@ function clipConvex(sub, clip) {
 // land ceded in peace treaties: the old country's shape is split into the cells of its cities (Voronoi on the map),
 // and the cells of the cities handed over are painted in the new owner's colour. Rebuilt only when the land changes.
 let gCeded = null;
+// a cell drawn on the flat map, as a shape on the globe (edges cut in small steps so they bend right)
+function cellGeoD(poly) {
+  const ring = [];
+  for (let i = 0; i < poly.length; i++) { const a = poly[i], b = poly[(i + 1) % poly.length]; for (let j = 0; j < 4; j++) { const g = FLATP.invert([a[0] + (b[0] - a[0]) * j / 4, a[1] + (b[1] - a[1]) * j / 4]); if (g && isFinite(g[0]) && isFinite(g[1])) ring.push(g); } }
+  if (ring.length < 3) return '';
+  ring.push(ring[0]);
+  let P = { type: 'Polygon', coordinates: [ring] };
+  if (d3.geoArea(P) > 2 * Math.PI) P = { type: 'Polygon', coordinates: [ring.slice().reverse()] };
+  return pathGen(P) || '';
+}
 function drawCeded(selOwner) {
   if (!gCeded || !S) return;
   const cl = S.cl || {}, key = Object.keys(cl).sort().map(k => k + '>' + cl[k]).join(';');
@@ -4606,16 +5039,18 @@ function drawCeded(selOwner) {
         els.forEach(e => { const q = document.createElementNS(ns, 'path'); q.setAttribute('d', e.getAttribute('d')); cp.appendChild(q); });
         defs.appendChild(cp);
         let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-        els.forEach(e => { try { const b = e.getBBox(); x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y); x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height); } catch (er) { /* not rendered */ } });
+        if (GP) { const fp = d3.geoPath(FLATP); GF.forEach(g => { if (g.f.properties.tid !== t) return; const [[a0, b0], [a1, b1]] = fp.bounds(g.f); x0 = Math.min(x0, a0); y0 = Math.min(y0, b0); x1 = Math.max(x1, a1); y1 = Math.max(y1, b1); }); }
+        else els.forEach(e => { try { const b = e.getBBox(); x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y); x1 = Math.max(x1, b.x + b.width); y1 = Math.max(y1, b.y + b.height); } catch (er) { /* not rendered */ } });
         if (!(x1 > x0)) { x0 = -W; y0 = -H; x1 = W * 2; y1 = H * 2; }
-        const vor = d3.Delaunay.from(l, x => x.mx, x => x.my).voronoi([x0 - 5, y0 - 5, x1 + 5, y1 + 5]);
+        const vor = d3.Delaunay.from(l, x => x.fx, x => x.fy).voronoi([x0 - 5, y0 - 5, x1 + 5, y1 + 5]);
         const g = document.createElementNS(ns, 'g'); g.setAttribute('clip-path', 'url(#cdc-' + t + ')');
         l.forEach((x, i) => {
           const o = landOf(x); if (o === S.owner[t]) return;
           let poly = vor.cellPolygon(i); if (!poly) return;
-          poly = clipConvex(poly, circPoly(x.mx, x.my, x.mr)); if (poly.length < 3) return;
+          poly = clipConvex(poly, circPoly(x.fx, x.fy, x.mr)); if (poly.length < 3) return;
           const q = document.createElementNS(ns, 'path');
-          q.setAttribute('d', 'M' + poly.map(p => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join('L') + 'Z');
+          if (GP) { const d = cellGeoD(poly); if (!d) return; q.setAttribute('d', d); }
+          else q.setAttribute('d', 'M' + poly.map(p => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join('L') + 'Z');
           q.setAttribute('data-cw', o); q.setAttribute('data-ci', x.id); q.__w = o;
           g.appendChild(q);
         });
@@ -4689,7 +5124,7 @@ const sEl = (tag, attrs, parent) => { const e = document.createElementNS(SVGNS, 
 function evLonLat(ev) {
   const [x, y] = d3.pointer(ev, svg.node());
   const m = curT.invert([x, y]);
-  return MAP_PROJ.invert(m);
+  return MAP_PROJ.invert(m) || null;
 }
 const uIcon = u => u.t === 'fleet' && (u.m.carriers || 0) >= 0.5 ? 'car' : UT[u.t].ic;
 function kTxt(k) { const v = k * 1000; return v >= 1e6 ? (v / 1e6).toFixed(v >= 1e7 ? 0 : 1) + 'M' : v >= 1000 ? Math.round(v / 1000) + 'K' : String(Math.round(v)); }
@@ -4861,14 +5296,17 @@ function drawUnits() {
   const order = S.units.filter(u => u.dest).sort((a, b) => (b.id === selUnit) - (a.id === selUnit));
   for (const u of order) {
     if (!u.dest || (u.o !== S.player && u.id !== selUnit && u.ai !== 'atk')) continue;
-    const a = toScreen(uPos(u)), b = toScreen(u.dest); if (!a || !b) continue;
+    const a = toScreen(uPos(u)), b = toScreen(u.dest); if (GP ? !a && !b : !a || !b) continue;
     const k = 'r' + u.id; rs.add(k);
     let r = RTEL.get(k);
     if (!r) { r = sEl('g', {}, gRoutes); r.__l = sEl('path', {}, r); r.__c = sEl('circle', { r: 3.5 }, r); r.__t = sEl('text', {}, r); RTEL.set(k, r); }
     setA(r.__l, 'class', u.o === S.player ? '' : 'en');
-    let dd = 'M' + a[0].toFixed(1) + ',' + a[1].toFixed(1), prev = a;
-    for (const q of (u.via || []).map(toScreen).concat([b])) { if (!q) continue; dd += (Math.abs(q[0] - prev[0]) > W * curK * 0.45 ? 'M' : 'L') + q[0].toFixed(1) + ',' + q[1].toFixed(1); prev = q; }
+    let dd;
+    if (GP) dd = gLine([uPos(u)].concat(u.via || [], [u.dest]));
+    else { dd = 'M' + a[0].toFixed(1) + ',' + a[1].toFixed(1); let prev = a;
+      for (const q of (u.via || []).map(toScreen).concat([b])) { if (!q) continue; dd += (Math.abs(q[0] - prev[0]) > W * curK * 0.45 ? 'M' : 'L') + q[0].toFixed(1) + ',' + q[1].toFixed(1); prev = q; } }
     setA(r.__l, 'd', dd);
+    if (!b || !a) { showE(r.__c, !!b && u.o === S.player); showE(r.__t, false); if (b) { setA(r.__c, 'cx', b[0].toFixed(1)); setA(r.__c, 'cy', b[1].toFixed(1)); } continue; }
     setA(r.__c, 'cx', b[0].toFixed(1)); setA(r.__c, 'cy', b[1].toFixed(1));
     // arrival time only where there is room for it (and always for the selected unit)
     let long = Math.hypot(b[0] - a[0], b[1] - a[1]) > 70 || u.id === selUnit;
@@ -4924,6 +5362,8 @@ function selectUnit(id, zoomIn) {
   setTimeout(() => focusUnit(u, zoomIn), 30);
 }
 function zoomToMapPt(p, k) {
+  if (!p) return;
+  if (GP) { globeTo(GP.invert(p), k, 500); return; }
   const [vx0, vy0, vx1, vy1] = visibleRect();
   const tr = d3.zoomIdentity.translate((vx0 + vx1) / 2, (vy0 + vy1) / 2).scale(k).translate(-p[0], -p[1]);
   svg.transition().duration(500).call(zoom.transform, tr);
@@ -4931,6 +5371,7 @@ function zoomToMapPt(p, k) {
 // keep the selected unit in the part of the map that the panel doesn't cover
 function focusUnit(u, zoomIn) {
   if (!u || !S.units.includes(u)) return;
+  if (GP) { const s = toScreen([u.lon, u.lat]), [vx0, vy0, vx1, vy1] = visibleRect(), m = 36; if (zoomIn || !s || s[0] < vx0 + m || s[0] > vx1 - m || s[1] < vy0 + m || s[1] > vy1 - m) globeTo([u.lon, u.lat], zoomIn ? Math.max(curK, zoomIn) : curK, 500); return; }
   const p = MAP_PROJ([u.lon, u.lat]); if (!p) return;
   const s = [curT.x + curT.k * p[0], curT.y + curT.k * p[1]];
   const [vx0, vy0, vx1, vy1] = visibleRect(), m = 36;
@@ -4939,7 +5380,12 @@ function focusUnit(u, zoomIn) {
 /* ---- cities layer: dots, stars and names in screen space; redrawn only when the view settles or something changes ---- */
 let gCities = null, citiesDirty = true, lastCityDraw = 0, cityT0 = null, selCity = null, zooming = false, UBOX = [], TWC = null;
 const CEL = new Map();
-function projCities() { if (!MAP_PROJ) return; CLT = null; for (const x of CITY) { const p = MAP_PROJ([x.lon, x.lat]); x.mx = p ? p[0] : NaN; x.my = p ? p[1] : NaN; } citiesDirty = true; }
+function projCities() {
+  if (!MAP_PROJ) return;
+  if (FLATP && projCities.f !== FLATP) { projCities.f = FLATP; CLT = null; for (const x of CITY) { const p = FLATP([x.lon, x.lat]); x.fx = p ? p[0] : NaN; x.fy = p ? p[1] : NaN; } }
+  for (const x of CITY) { const p = MAP_PROJ([x.lon, x.lat]); x.mx = p ? p[0] : NaN; x.my = p ? p[1] : NaN; }
+  citiesDirty = true;
+}
 // during a pan / pinch the whole layer simply follows the map
 function cityFollow() {
   if (!gCities || !cityT0) return;
@@ -5034,7 +5480,7 @@ function openCity(id, k) {
   recolor(); openTabFresh('city'); drawCities();
   setTimeout(() => {
     const s = toScreen(cityPt(x)), [vx0, vy0, vx1, vy1] = visibleRect();
-    if (k > curK || !s || s[0] < vx0 + 30 || s[0] > vx1 - 30 || s[1] < vy0 + 30 || s[1] > vy1 - 30) zoomToMapPt(MAP_PROJ(cityPt(x)), Math.max(curK, k || 0));
+    if (k > curK || !s || s[0] < vx0 + 30 || s[0] > vx1 - 30 || s[1] < vy0 + 30 || s[1] > vy1 - 30) zoomToGeo(cityPt(x), Math.max(curK, k || 0));
   }, 40);
 }
 // a city tapped while choosing a destination or a target for a unit
@@ -5235,6 +5681,7 @@ let FXMODE = (() => {
 function setFxMode(v) {
   FXMODE = v; try { localStorage.setItem('world2026_fx', v); } catch (e) { /* no storage */ }
   FXL = v === 'off' ? [] : v === 'low' ? FXL.filter(f => f.one) : FXL; fxDirty = true;
+  gStars(); drawDeco();
 }
 function initFx() {
   if (fxCv) fxCv.remove();
@@ -5282,6 +5729,7 @@ function fxReveal(a, b) {
   if (!svg || uMode || !MAP_PROJ) return;
   const [vx0, vy0, vx1, vy1] = visibleRect(), sb = toScreen(b), m = 30;
   if (sb && sb[0] > vx0 + m && sb[0] < vx1 - m && sb[1] > vy0 + m && sb[1] < vy1 - m) return;
+  if (GP) { const ang = d3.geoDistance(a, b); globeTo(d3.geoInterpolate(a, b)(0.5), clamp(Math.min(curK, 0.7 * Math.min(vx1 - vx0, vy1 - vy0) / Math.max(1, ang * GR)), gKfit, 40), 500); return; }
   const pa = MAP_PROJ(a), pb = MAP_PROJ(b); if (!pa || !pb) return;
   const dx = Math.abs(pa[0] - pb[0]), dy = Math.abs(pa[1] - pb[1]);
   const k = clamp(Math.min(curK, 0.7 * (vx1 - vx0) / Math.max(1, dx), 0.7 * (vy1 - vy0) / Math.max(1, dy)), 1.2, 40);
@@ -5454,6 +5902,7 @@ function fxDraw(now, trails) {
         break;
       }
       case 'arc': {
+        if (GP) { gArc(c, e, k); break; }
         let a = toScreen(e.p0), b = toScreen(e.p1); if (!a || !b) break;
         if (e.o0) a = [a[0] + e.o0[0], a[1] + e.o0[1]];
         if (e.o1) b = [b[0] + e.o1[0], b[1] + e.o1[1]];
@@ -5617,7 +6066,9 @@ function keepSelVisible() {
   if (tab !== 'country' || !MAP_PROJ || uMode) return;
   const t = selected || mainTid(S.player); const T = t && TERR[t]; if (!T) return;
   // where the player tapped (a big country stays put), else the country's middle
-  const q = MAP_PROJ(keepSelVisible.t === t && keepSelVisible.p ? keepSelVisible.p : T.c); keepSelVisible.p = null; if (!q) return;
+  const ll = keepSelVisible.t === t && keepSelVisible.p ? keepSelVisible.p : T.c, q = MAP_PROJ(ll); keepSelVisible.p = null;
+  if (GP) { if (gAnim) return; const s = toScreen(ll), [vx0, vy0, vx1, vy1] = visibleRect(), m = 30; if (!s || s[0] < vx0 + m || s[0] > vx1 - m || s[1] < vy0 + m || s[1] > vy1 - m) globeTo(ll, curK, 500); return; }
+  if (!q) return;
   const s = [curT.x + curK * q[0], curT.y + curK * q[1]], [vx0, vy0, vx1, vy1] = visibleRect(), m = 30;
   if (s[0] < vx0 + m || s[0] > vx1 - m || s[1] < vy0 + m || s[1] > vy1 - m) zoomToMapPt(q, curK);
 }
@@ -6295,7 +6746,7 @@ function processPending() {
     if (!w) return processPending();
     const u = unitById(p.uid);
     modal({ title: 'פלישה! ' + esc(nm(p.from)) + ' חצתה את הגבול', cls: 'danger', html: '<p>יחידות של <b>' + esc(nm(p.from)) + '</b> נכנסות לשטח ' + esc(P().he) + '.</p><ul class="plain"><li>כדי לעצור אותן — הזז לשם יחידות יבשה (חי״ר ושריון) ותן להן תמיכה מהאוויר.</li><li>אם לא נגן — האויב יכבוש עוד ועוד שטח.</li>' + (minOn('def') ? '<li><b>' + esc(mTitle('def', minOn('def'))) + ' כבר מזיז כוחות להגנה.</b></li>' : '') + '</ul>',
-      buttons: [{ label: 'הראה לי', cls: 'primary', fn: () => { setSpeed(0); if (u) { const p2 = MAP_PROJ([u.dest ? u.dest[0] : u.lon, u.dest ? u.dest[1] : u.lat]); zoomToMapPt(p2, Math.max(curK, 8)); } after(); } }, { label: 'המשך', fn: after }] });
+      buttons: [{ label: 'הראה לי', cls: 'primary', fn: () => { setSpeed(0); if (u) { zoomToGeo([u.dest ? u.dest[0] : u.lon, u.dest ? u.dest[1] : u.lat], Math.max(curK, 8)); } after(); } }, { label: 'המשך', fn: after }] });
     return;
   }
   if (p.type === 'nukealert') {
@@ -6462,7 +6913,9 @@ const ACT = {
   startpick: () => beginGame(),
   zin: () => zoomBy(1.6),
   zout: () => zoomBy(1 / 1.6),
-  zworld: () => { if (svg) svg.transition().duration(600).call(zoom.transform, d3.zoomIdentity); },
+  zworld: () => { if (GP) { globeTo(gC, gKfit, 600, true); return; } if (svg) svg.transition().duration(600).call(zoom.transform, d3.zoomIdentity); },
+  globe: () => setGlobe(!GLOBE),
+  clouds: () => { CLOUDS = !CLOUDS; try { localStorage.setItem('world2026_clouds', CLOUDS ? '1' : '0'); } catch (e) { /* no storage */ } drawDeco(); toast(CLOUDS ? 'עננים מוצגים' : 'בלי עננים'); },
   kbhelp: () => showKeys(),
   centerme: () => S && S.player && zoomToTid(S.player, 10),
   legend: () => $('#legend').classList.toggle('open'),
@@ -6470,7 +6923,7 @@ const ACT = {
   urgpend: () => { openTab(null); processPending(); },
   urgidle: d => { ulistIds = String(d.ids).split(',').map(Number); selUnit = null; openTabFresh('ulist');
     // bring the waiting units into view above the sheet
-    const u = unitById(ulistIds[0]); if (u) setTimeout(() => { const q = MAP_PROJ([u.lon, u.lat]); if (!q) return; const sx = curT.x + curK * q[0], sy = curT.y + curK * q[1], [vx0, vy0, vx1, vy1] = visibleRect(); if (sx < vx0 + 30 || sx > vx1 - 30 || sy < vy0 + 30 || sy > vy1 - 30) zoomToMapPt(q, curK); }, 80); },
+    const u = unitById(ulistIds[0]); if (u) setTimeout(() => { if (GP) { focusUnit(u); return; } const q = MAP_PROJ([u.lon, u.lat]); if (!q) return; const sx = curT.x + curK * q[0], sy = curT.y + curK * q[1], [vx0, vy0, vx1, vy1] = visibleRect(); if (sx < vx0 + 30 || sx > vx1 - 30 || sy < vy0 + 30 || sy > vy1 - 30) zoomToMapPt(q, curK); }, 80); },
   tutnext: () => tutStep(1),
   tutskip: () => tutEnd(),
   tutstart: () => tutStart(),
@@ -6842,7 +7295,7 @@ function showHelp() {
 }
 function showMenu() {
   const fxSeg = '<h3 class="mh">אנימציות (פיצוצים וקרבות)</h3><div class="seg">' + [['full', 'מלאות'], ['low', 'מופחתות'], ['off', 'כבויות']].map(([v, l]) => '<button class="' + (FXMODE === v ? 'on' : '') + '" data-act="fxmode" data-v="' + v + '">' + l + '</button>').join('') + '</div>';
-  modal({ title: 'תפריט', html: '<div class="btns col">' + btn('help', 'איך משחקים') + btn('tutstart', 'הדרכה קצרה (7 צעדים)') + btn('tab', 'ממשלה ושרים', '', ' data-tab="gov"') + btn('goworld', 'העולם — דירוג ומגמות') + btn('stats', 'סטטיסטיקות ואבדות') + btn('centerme', 'מרכז את המפה על המדינה שלי') + (isDesk() ? btn('kbhelp', 'קיצורי מקלדת ועכבר (?)') : '') + btn('newgame', 'משחק חדש', 'danger') + '</div>' + fxSeg + '<p class="sub">"מופחתות" — רק פיצוץ קצר במקום הפגיעה, בלי הבזקים ורעידות. המשחק נשמר אוטומטית כל כמה שניות.</p>',
+  modal({ title: 'תפריט', html: '<div class="btns col">' + btn('help', 'איך משחקים') + btn('tutstart', 'הדרכה קצרה (7 צעדים)') + btn('tab', 'ממשלה ושרים', '', ' data-tab="gov"') + btn('goworld', 'העולם — דירוג ומגמות') + btn('stats', 'סטטיסטיקות ואבדות') + btn('centerme', 'מרכז את המפה על המדינה שלי') + btn('globe', GLOBE ? '🗺️ מעבר למפה שטוחה' : '🌍 מעבר לגלובוס תלת־ממדי') + (GLOBE ? btn('clouds', CLOUDS ? 'הסתר עננים' : 'הצג עננים') : '') + (isDesk() ? btn('kbhelp', 'קיצורי מקלדת ועכבר (?)') : '') + btn('newgame', 'משחק חדש', 'danger') + '</div>' + fxSeg + '<p class="sub">"מופחתות" — רק פיצוץ קצר במקום הפגיעה, בלי הבזקים ורעידות. המשחק נשמר אוטומטית כל כמה שניות.</p>',
     buttons: [{ label: 'סגור' }], onShow: () => document.querySelectorAll('#m-body .btns [data-act]').forEach(b => b.addEventListener('click', () => { modalQ.shift(); $('#modal').classList.remove('open'); setTimeout(showModal, 30); }, { once: true })) });
 }
 
@@ -6958,6 +7411,7 @@ function frame(t) {
   // the cities layer: only when something changed and the map is not moving
   if (citiesDirty && gCities && !zooming && t - lastCityDraw > 700) drawCities();
   fxFrame(t, dt);
+  gTick(t);
   if (t - lastSave > 5000) { lastSave = t; save(); }
 }
 
@@ -7018,7 +7472,7 @@ function boot() {
   }
   let rt; window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(() => {
     const box = $('#map'); if (Math.abs(box.clientWidth - W) < 40 && Math.abs(box.clientHeight - H) < 120) return;
-    d3.select('#mapsvg').remove(); for (const k in pathByTid) delete pathByTid[k]; curK = 1; initMap(); drawMarks.k = null; recolor();
+    rebuildMap();
   }, 300); });
   requestAnimationFrame(frame);
   window.__W26 = { get S() { return S; }, dayTick, FX: { enemyStrike, nukeImpact, showCard, hideCard, setFxMode, get n() { return FXL.length; }, get mode() { return FXMODE; }, PS, WST, warSt }, runDays: n => { for (let i = 0; i < n && !S.over; i++) dayTick(); renderAll(); }, declareWar, annex, power, rel, ACT, setSpeed, strike,
@@ -7028,7 +7482,7 @@ function boot() {
     C: { get CITY() { return CITY; }, CITYI, pickCede, cede, applyPeace, landOf, ptOwner, peaceDialog, drawCities, cityDay, captureCity, openCity, reconcileCities, aiCityFlip, citiesOfT, heldShare, nukeCityEst, cityStand, get selCity() { return selCity; } },
     EVS: { EV, EVI, eventsDay, evCtx, evChoose, evDialog, worldCoup, rebel, ranks, worldSnap },
     STATS: () => ({ ev: S.ev && S.ev.n, dec: S.ev && S.ev.dn, wc: S.wc || {}, log: S.p && S.p.gov ? S.p.gov.log.length : 0 }),
-    U: { unitById, unitsOf, planMove, orderTo, commitMove, selectUnit, setMode, modeTap, syncAllUnits, buildItems, uStr, distToC, nearIn, tidAt, ownerAt, isSeaAt, snapSea, toScreen, drawUnits, zoomToMapPt, tp, mapProj: p => MAP_PROJ(p),
+    U: { unitById, unitsOf, planMove, orderTo, commitMove, selectUnit, setMode, modeTap, syncAllUnits, buildItems, uStr, distToC, nearIn, tidAt, ownerAt, isSeaAt, snapSea, toScreen, drawUnits, zoomToMapPt, tp, mapProj: p => MAP_PROJ(p), get globe() { return !!GP; }, setGlobe, globeTo, get gC() { return gC; }, gEnd, sun: () => sunPt(), set sunLon(v) { gSunLon = v; }, get gK() { return [gKmin, gKfit]; },
       get curK() { return curK; }, get uMode() { return uMode; }, get selUnit() { return selUnit; } }, CB: { crushF, routLoss, breakDays, ratioTxt, forecastTxt, siegeForces, siegeRate } };
 }
 window.addEventListener('DOMContentLoaded', () => {

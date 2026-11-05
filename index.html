@@ -30,6 +30,20 @@ button{font:inherit;color:inherit}
 .grat{fill:none;stroke:#16324a;stroke-width:.5;vector-effect:non-scaling-stroke;opacity:.6}
 .land path{stroke:#0b0f14;stroke-width:.6;vector-effect:non-scaling-stroke;stroke-linejoin:round;cursor:pointer}
 .land path.sel{stroke:#fff;stroke-width:1.6}
+#map.globe{background-color:#03060c}
+#map.globe .grat{stroke:#7fb0e0;opacity:.14}
+#map.globe .land path{stroke:#081018;stroke-width:.75}
+#map.globe .land path.sel{stroke:#fff;stroke-width:1.6}
+.gglow,.glimb,.deco,.deco path{pointer-events:none}
+#mapsvg.gmove .land path,#mapsvg.gmove .deco path{shape-rendering:optimizeSpeed}
+.night{fill:#01061a;opacity:.36}
+#map:not(.globe) .night{opacity:.2}
+.lit1{fill:#ffb347;opacity:.17}
+.lit2{fill:#ffe6a6;opacity:.85}
+.cld1{fill:#eef4fb;opacity:.07}
+.cld2{fill:#f6f9fc;opacity:.13}
+#gtog{position:fixed;z-index:15;left:8px;top:calc(env(safe-area-inset-top) + 104px);width:36px;height:36px;padding:0;font-size:18px;border-radius:50%}
+body.desk #gtog{display:none!important}
 .ceded path{stroke:rgba(255,255,255,.28);stroke-width:.6;vector-effect:non-scaling-stroke;stroke-linejoin:round;cursor:pointer}
 .ceded path.sel{stroke:#fff;stroke-width:1.2}
 .marks{pointer-events:none}
@@ -422,7 +436,8 @@ body.desk #tut-b{max-width:440px}
     <div class="sh-head"><span class="grab"></span><button class="ic" data-act="close" aria-label="סגור">✕</button></div>
     <div id="sheet-body"></div>
   </section>
-  <div id="zctl"><button class="ic" data-act="zin" title="הגדל (+)">+</button><button class="ic" data-act="zout" title="הקטן (−)">−</button><button class="ic" data-act="centerme" title="המדינה שלי (Home)">⌂</button><button class="ic" data-act="zworld" title="כל העולם">🌐</button></div>
+  <div id="zctl"><button class="ic" data-act="zin" title="הגדל (+)">+</button><button class="ic" data-act="zout" title="הקטן (−)">−</button><button class="ic" data-act="centerme" title="המדינה שלי (Home)">⌂</button><button class="ic" data-act="zworld" title="כל העולם">🌐</button><button class="ic gtg" data-act="globe" title="גלובוס / מפה שטוחה">🗺️</button></div>
+  <button id="gtog" class="ic gtg" data-act="globe" title="גלובוס / מפה שטוחה" aria-label="גלובוס / מפה שטוחה">🗺️</button>
   <nav id="bar">
     <div class="tabs">
       <button data-act="tab" data-tab="country">מדינה</button>
