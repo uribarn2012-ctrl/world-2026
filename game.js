@@ -363,7 +363,13 @@ function worldView(x) {
 // a country most of the world dislikes, or one that attacked us / our allies in the last year
 const hated = x => worldView(x) < -12 || (S.c[x] && S.c[x].gov === 'authoritarian' && worldView(x) < -5);
 const provoked = x => S.p && S.p.griev[x] != null && S.day - S.p.griev[x] < 365;
-const justified = x => hated(x) || provoked(x);
+// a friend of ours is at war with x: an ally, a country fighting at our request, or a close friend (relations 60+)
+function friendAtWarWith(x) {
+  if (!S.p || !S.c[x]) return null;
+  const help = new Set((S.p.help || []).map(h => h.o));
+  return alive().find(y => y !== S.player && y !== x && atWar(y, x) && (isAlly(y, S.player) || help.has(y) || rel(y, S.player) >= 60)) || null;
+}
+const justified = x => hated(x) || provoked(x) || !!friendAtWarWith(x);
 function noteGrievance(att, victim) {
   if (!S.p || att === S.player) return;
   if (victim === S.player || isAlly(victim, S.player)) S.p.griev[att] = S.day;
@@ -6378,6 +6384,7 @@ function viewCountry() {
   if (hasPact(o, S.player, 'trade')) st.push(chip('הסכם סחר', 'teal'));
   if (sanctions(S.player, o)) st.push(chip('אתה מטיל סנקציות'));
   if (sanctions(o, S.player)) st.push(chip('מטילה עליך סנקציות', 'red'));
+  if (!provoked(o) && friendAtWarWith(o)) st.push(chip('במלחמה עם ' + nm(friendAtWarWith(o)) + ' — יש לך סיבה', 'orange'));
   if (provoked(o)) st.push(chip('תקפה אותך או בעלות בריתך', 'orange'));
   else if (hated(o)) st.push(chip('מבודדת בעולם', 'orange'));
   const ow = warsOf(o).filter(w => !involvesPlayer(w)); if (ow.length) st.push(chip('במלחמה עם ' + ow.map(w => nm(enemyLeaderFor(w, o))).join(', '), 'orange'));
@@ -6428,7 +6435,8 @@ const sancRep = o => justified(o) ? 1 : S.c[o].gdp < P().gdp * 0.2 ? -4 : -1;
 const nukeCost = c => Math.max(0.05, c.gdp * 0.004);
 function warFx(o) {
   const j = justified(o), nap = hasPact(o, S.player, 'nap');
-  return { rep: (j ? -5 : -15) - (nap ? 10 : 0), ap: j ? 2 : -2, rel: { [o]: -100 } };
+  const base = !j ? -15 : provoked(o) ? -3 : friendAtWarWith(o) ? -2 : -5;
+  return { rep: base - (nap ? 10 : 0), ap: j ? 2 : -2, rel: { [o]: -100 } };
 }
 /* ---- strikes (with or without war) ---- */
 function strikeRange(o) {
@@ -7345,7 +7353,7 @@ function confirmWar(o, after, what) {
     '<li>יחס כוחות אפקטיבי בחזית: ' + num(ratio, 1) + ' : 1 ' + (ratio > 2 ? '(טוב)' : ratio > 1 ? '(צמוד)' : '(מסוכן!)') + '</li>' +
     (j.length ? '<li class="red">צפויות להצטרף לצד האויב: ' + j.slice(0, 8).map(nm).join(', ') + (j.length > 8 ? ' ועוד ' + (j.length - 8) : '') + '</li>' : '<li>אין לה בעלות ברית שצפויות להגן עליה.</li>') +
     (nap ? '<li class="red">יש לכם הסכם אי-תוקפנות — הפרתו תפגע במוניטין שלך בכל העולם.</li>' : '') +
-    (justified(o) ? '<li>יש לך סיבה: ' + (provoked(o) ? 'הם תקפו אותך או את בעלות בריתך.' : 'רוב העולם מתנגד להם.') + ' העולם יכעס פחות.</li>' : '<li class="red">מלחמה בלי סיבה — העולם יראה בך תוקפן.</li>') +
+    (justified(o) ? '<li>יש לך סיבה: ' + (!provoked(o) && friendAtWarWith(o) ? 'הם במלחמה עם ' + nm(friendAtWarWith(o)) + ', שנמצאת בצד שלך.' : provoked(o) ? 'הם תקפו אותך או את בעלות בריתך.' : 'רוב העולם מתנגד להם.') + ' העולם יכעס פחות.</li>' : '<li class="red">מלחמה בלי סיבה — העולם יראה בך תוקפן.</li>') +
     '<li>כדי לכבוש צריך להכניס לשם כוחות יבשה (חי״ר ושריון) — הקש על יחידה שלך ← "תקוף מדינה".</li>' +
     '<li>מלחמה עולה כסף, הורגת חיילים ומעייפת את העם.</li></ul><div class="box">צפוי: ' + fxLine(e) + '</div>';
   modal({ title: 'הכרזת מלחמה', html: h, buttons: [{ label: 'הכרז מלחמה', cls: 'danger', fn: () => {
