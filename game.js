@@ -4761,7 +4761,7 @@ function gRender(low) {
   projCities();
   drawDeco();
   drawMarks(); drawScorch();
-  if (low) { if (gCeded) gCeded.style.display = 'none'; if (gCities) gCities.style.display = 'none'; }
+  if (low) { if (gCeded) gCeded.style.display = 'none'; gCityMove(); }
   svg.classed('gmove', !!low);
   if (fanIds && Math.abs(curK / fanK - 1) > 0.25) fanIds = null;
   drawUnits();
@@ -5387,6 +5387,17 @@ function projCities() {
   citiesDirty = true;
 }
 // during a pan / pinch the whole layer simply follows the map
+// globe moving: slide the city markers that are already drawn (no re-layout), hide the ones behind the globe
+function gCityMove() {
+  if (!gCities || !CEL.size) return;
+  CEL.forEach((g, id) => {
+    const x = CITYI[id]; if (!x) return;
+    const p = [x.lon, x.lat];
+    if (gFront(p) < 0.08) { g.style.display = 'none'; return; }
+    const sp = toScreen(p); if (!sp) { g.style.display = 'none'; return; }
+    g.style.display = ''; g.setAttribute('transform', 'translate(' + sp[0].toFixed(1) + ',' + sp[1].toFixed(1) + ')');
+  });
+}
 function cityFollow() {
   if (!gCities || !cityT0) return;
   const r = curT.k / cityT0.k;
