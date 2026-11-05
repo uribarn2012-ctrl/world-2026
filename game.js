@@ -2740,7 +2740,7 @@ function deliveries() {
     fxToast('הושלם: ' + D.he, e);
     return false;
   });
-  peaceDaily(); techDaily(); if (S.day % 7 === 0) { missionsCheck(); tensionWeekly(); helpersWeekly(); }
+  peaceDaily(); techDaily(); if (S.day % 7 === 0) { missionsCheck(); tensionWeekly(); helpersWeekly(); alliesWeekly(); }
 }
 
 /* ================= peaceful play: diplomacy and development without war ================= */
@@ -3336,6 +3336,35 @@ function allyAsks() {
     addNews(S.c[o].he + ' ביקשה את עזרתנו במלחמה.', 'dip');
   });
 }
+// a country fighting on our side really strikes the enemy: losses, casualties, animation, news
+function allyStrike(x, e) {
+  const X = S.c[x], E = S.c[e]; if (!X || !E || !X.alive || !E.alive) return null;
+  const kind = (X.inv.msl || 0) > 20 && R() < 0.5 ? 'mis' : 'air';
+  if (kind === 'air' && (X.inv.air || 0) < 4) return null;
+  const used = kind === 'air' ? clamp(Math.round(X.inv.air * 0.06), 4, 120) : clamp(Math.round(X.inv.msl * 0.08), 5, 150);
+  if (kind === 'mis') X.inv.msl = Math.max(0, X.inv.msl - used);
+  const before = invSnap(E), ratio = clamp(power(X) / Math.max(1, power(E)), 0.05, 3), frac = 0.004 + 0.012 * ratio;
+  hurtInv(E, frac, ['tanks', 'afv', 'art', 'air', 'heli', 'msl']); hurtInv(E, frac * 0.6, ['troops']);
+  E.gdp *= 1 - frac * 0.03;
+  const loss = lossFrom(E, before); civCas(loss, Math.round(used * (kind === 'air' ? 0.3 : 0.7) * densF(e) * (0.4 + R() * 0.8)), 2.5 + R());
+  const r = strikeRecord({ k: kind, by: x, at: e, cas: loss, own: newCas(), fx: [], war: true, used, lost: 0 });
+  addNews('🤝 ' + strikeLine(r) + '.', 'war');
+  const lp = launchPt(x, kind, e); fxStrike(kind, lp, targetPt(e, lp), used, r);
+  return r;
+}
+function alliesWeekly() {
+  if (!S.p) return; let said = 0;
+  S.wars.forEach(w => {
+    if (!inWar(w, S.player)) return;
+    const side = w.A.includes(S.player) ? w.A : w.B, e = enemyLeaderFor(w, S.player);
+    side.forEach(x => {
+      if (x === S.player || R() > 0.75) return;
+      const r = allyStrike(x, e);
+      if (r && !said) { said = 1; toast('🤝 ' + nm(x) + ' תקפה את ' + nm(e) + ' (' + num(Math.round(r.cas ? (r.cas.sk || 0) + (r.cas.ck || 0) : 0)) + ' הרוגים)'); }
+    });
+  });
+  if (said && S.units) syncAllUnits();
+}
 function helpersWeekly() {
   const p = S.p; if (!p || !p.help || !p.help.length) return;
   p.help = p.help.filter(h => {
@@ -3346,7 +3375,7 @@ function helpersWeekly() {
       [w.A, w.B].forEach(side => { const i = side.indexOf(h.o); if (i > 0) side.splice(i, 1); });
       toast(nm(h.o) + ' סיימה את התקיפות נגד ' + nm(e)); addNews(nm(h.o) + ' סיימה את הסיוע הצבאי שלנו נגד ' + nm(e) + '.', 'dip'); needMapRecolor = true; return false;
     }
-    if (S.c[e]) { hurtInv(S.c[e], 0.008, ['troops', 'tanks', 'afv', 'art', 'air']); addNews('מטוסים של ' + nm(h.o) + ' תקפו מטרות ב' + nm(e) + '.', 'war'); }
+    if (h.own && S.c[e]) allyStrike(h.o, e);   // their own war at our request (wars on our side are handled by alliesWeekly)
     return true;
   });
 }
