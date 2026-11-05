@@ -3193,9 +3193,14 @@ const YES = ['בשמחה, אתם חברים שלנו.', 'בסדר, נעשה את
 const NO = ['מצטערים, זה לא אפשרי כרגע.', 'לא נוכל. הציבור שלנו לא יקבל את זה.', 'אנחנו לא סומכים עליכם מספיק בשביל זה.', 'לא עכשיו. אולי בעתיד.'];
 const pickT = a => a[Math.floor(R() * a.length)];
 // what the player can ask for or offer: [key, label, difficulty or null for offers, available?, do]
+// how our ambassador reads their mood — words and a color instead of a number
+function odds(c) {
+  const [t, cl] = c > 0.8 ? ['השגריר: הם כמעט בטוח יסכימו', 'ok'] : c > 0.6 ? ['השגריר: נראה שהם יסכימו', 'ok'] : c > 0.4 ? ['השגריר: הם מתלבטים', 'warn'] : c > 0.2 ? ['השגריר: לא סביר שיסכימו', 'bad'] : ['השגריר: אין סיכוי, הם יסרבו', 'bad'];
+  return '<span class="' + cl + '">' + t + '</span>';
+}
 function chatOptions(o) {
   const C = S.c[o], me = P(), en = myEnemies(), tw = theirWars(o), opts = [];
-  const ask = (k, label, d, fn) => { const cd = cdLeft('ask' + k + ':' + o); opts.push({ k, label: label + '<small class="cost">' + (cd ? 'אפשר שוב בעוד ' + daysTxt(cd) : 'סיכוי ' + pct(askChance(o, d) * 100)) + '</small>', dis: !!cd, fn: () => {
+  const ask = (k, label, d, fn) => { const cd = cdLeft('ask' + k + ':' + o); opts.push({ k, label: label + '<small class="cost">' + (cd ? 'כבר ביקשנו — אפשר שוב בעוד ' + daysTxt(cd) : odds(askChance(o, d))) + '</small>', dis: !!cd, fn: () => {
     setCd('ask' + k + ':' + o, 45);
     if (R() < askChance(o, d)) { say(o, 'them', pickT(YES)); fn(); addTrust(o, -1); } else { say(o, 'them', pickT(NO)); addRel(o, S.player, -1); }
   } }); };
@@ -3253,7 +3258,7 @@ function chatHtml(o) {
 function chatOpen(o) {
   if (!S.c[o] || o === S.player) return;
   const reb = () => { modalQ[0] = build(); showModal(); };
-  const build = () => ({ title: '💬 שיחה עם ' + S.c[o].he, html: chatHtml(o), col: 1, onShow: () => {
+  const build = () => ({ title: '💬 שיחה עם ' + S.c[o].he, html: chatHtml(o), col: 1, cls: 'chatm', onShow: () => {
       const c = document.querySelector('#m-body .chat'); if (c) c.scrollTop = c.scrollHeight;
       document.querySelectorAll('#m-body [data-ca]').forEach(b => b.onclick = () => { (S.p.chatA = S.p.chatA || {})[o] = +b.dataset.ca; reb(); });
       const q = document.getElementById('chatq'), res = document.getElementById('chatres');
