@@ -3192,6 +3192,25 @@ function willing(o) {
     trustOf(o) * 0.04 + (S.p.rep - 50) / 300 - theirWars(o).length * 0.08, 0, 1);
 }
 const askChance = (o, d) => clamp(willing(o) - d + 0.3, 0.03, 0.95);
+// decisions follow one rule (no dice): they agree when their willingness covers how big the request is.
+// a refusal about a country is remembered: anything as big or bigger about it is refused too, until things change
+function askMargin(o, d, tgt) {
+  let m = willing(o) - d - 0.2;
+  const r = tgt && S.p.refused && S.p.refused[o + '>' + tgt];
+  if (r && d >= r.d - 0.001 && willing(o) < r.w + 0.08) m = Math.min(m, -0.01);
+  return m;
+}
+function rememberNo(o, tgt, d) { if (!tgt) return; const p = S.p; p.refused = p.refused || {}; const k = o + '>' + tgt, r = p.refused[k]; if (!r || d < r.d) p.refused[k] = { d, w: willing(o) }; }
+function refuseWhy(o, tgt, d) {
+  const r = tgt && S.p.refused && S.p.refused[o + '>' + tgt];
+  if (r && d >= r.d - 0.001) return 'כבר אמרנו לכם שלא נפעל נגד ' + nm(tgt) + ' — וזה עוד יותר מזה';
+  if (tgt && rel(o, tgt) > 20) return 'יש לנו יחסים טובים עם ' + nm(tgt) + ', לא נפגע בהם';
+  if (S.p.favor && S.day - (S.p.favor[o] ?? -999) < 45) return 'כבר עשינו לכם טובה עכשיו — אל תמתחו את החבל';
+  if (trustOf(o) <= -3) return 'ביקשתם מאיתנו יותר מדי לאחרונה. קודם תעזרו לנו';
+  if (theirWars(o).length) return 'אנחנו עסוקים במלחמה משלנו';
+  if (rel(o, S.player) < 30) return 'אנחנו לא מספיק קרובים אליכם בשביל זה';
+  return 'זה צעד גדול מדי בשבילנו כרגע';
+}
 function chatLog(o) { const p = S.p; p.chat = p.chat || {}; return (p.chat[o] = p.chat[o] || []); }
 function say(o, who, txt) { const L = chatLog(o); L.push({ w: who, t: String(txt).replace(/<[^>]+>/g, '').replace(/[⁦⁩]/g, ''), d: S.day }); if (L.length > 14) L.shift(); }
 const LEADER = o => (S.c[o].gov === 'democracy' ? 'הנשיא/ראש הממשלה' : 'השליט') + ' של ' + S.c[o].he;
@@ -3200,15 +3219,17 @@ const NO = ['מצטערים, זה לא אפשרי כרגע.', 'לא נוכל. ה
 const pickT = a => a[Math.floor(R() * a.length)];
 // what the player can ask for or offer: [key, label, difficulty or null for offers, available?, do]
 // how our ambassador reads their mood — words and a color instead of a number
-function odds(c) {
-  const [t, cl] = c > 0.8 ? ['השגריר: הם כמעט בטוח יסכימו', 'ok'] : c > 0.6 ? ['השגריר: נראה שהם יסכימו', 'ok'] : c > 0.4 ? ['השגריר: הם מתלבטים', 'warn'] : c > 0.2 ? ['השגריר: לא סביר שיסכימו', 'bad'] : ['השגריר: אין סיכוי, הם יסרבו', 'bad'];
-  return '<span class="' + cl + '">' + t + '</span>';
+function odds(m, why) {
+  const [t, cl] = m >= 0.25 ? ['השגריר: הם יסכימו בקלות', 'ok'] : m >= 0.08 ? ['השגריר: הם יסכימו', 'ok'] : m >= 0 ? ['השגריר: על הקצה — כנראה יסכימו', 'warn'] : m > -0.1 ? ['השגריר: על הקצה — כנראה יסרבו', 'warn'] : ['השגריר: הם יסרבו', 'bad'];
+  return '<span class="' + cl + '">' + t + (m < 0 && why ? ' (' + esc(why) + ')' : '') + '</span>';
 }
 function chatOptions(o) {
   const C = S.c[o], me = P(), en = myEnemies(), tw = theirWars(o), opts = [];
-  const ask = (k, label, d, fn) => { const cd = cdLeft('ask' + k + ':' + o); opts.push({ k, label: label + '<small class="cost">' + (cd ? 'כבר ביקשנו — אפשר שוב בעוד ' + daysTxt(cd) : odds(askChance(o, d))) + '</small>', dis: !!cd, fn: () => {
+  const ask = (k, label, d, fn, tgt) => { const cd = cdLeft('ask' + k + ':' + o), m = askMargin(o, d, tgt);
+    opts.push({ k, label: label + '<small class="cost">' + (cd ? 'כבר ביקשנו — אפשר שוב בעוד ' + daysTxt(cd) : odds(m, refuseWhy(o, tgt, d))) + '</small>', dis: !!cd, fn: () => {
     setCd('ask' + k + ':' + o, 45);
-    if (R() < askChance(o, d)) { say(o, 'them', pickT(YES)); fn(); addTrust(o, -1); } else { say(o, 'them', pickT(NO)); addRel(o, S.player, -1); }
+    if (m >= 0) { say(o, 'them', pickT(YES)); fn(); addTrust(o, -1); (S.p.favor = S.p.favor || {})[o] = S.day; }
+    else { say(o, 'them', refuseWhy(o, tgt, d) + '.'); addRel(o, S.player, -1); rememberNo(o, tgt, d); }
   } }); };
   const offer = (k, label, note, fn) => { const cd = cdLeft('off' + k + ':' + o); opts.push({ k, label: label + '<small class="cost">' + (cd ? 'אפשר שוב בעוד ' + daysTxt(cd) : note) + '</small>', dis: !!cd, fn: () => { setCd('off' + k + ':' + o, 60); fn(); } }); };
   const p = S.p; p.ask = p.ask || {};
@@ -3232,12 +3253,12 @@ function chatOptions(o) {
   targets.forEach(e => {
     const w = S.wars.find(x => inWar(x, S.player) && inWar(x, e)), friend = rel(o, e) > 20 ? 0.3 : 0;
     if (w && inWar(w, o)) return;
-    [30, 90, 180].forEach(days => ask('atk' + e + days, '🎯 תתקפו את ' + nm(e) + ' במשך ' + daysTxt(days), 0.35 + days / 900 + friend + (w ? 0 : 0.15), () => {
+    [30, 90, 180].forEach(days => ask('atk' + e + days, '🎯 תתקפו את ' + nm(e) + ' במשך ' + daysTxt(days), 0.45 + days / 900 + friend + (w ? 0 : 0.15), () => {
       if (w) { joinSide(w, o, S.player); (S.p.help = S.p.help || []).push({ o, w: w.id, until: S.day + days }); }
       else { const nw = declareWar(o, e, { noJoin: true }); if (nw) (S.p.help = S.p.help || []).push({ o, w: nw.id, until: S.day + days, own: 1 }); addRel(e, S.player, -10); }
-      say(o, 'them', 'הצבא שלנו יתקוף את ' + nm(e) + ' במשך ' + daysTxt(days) + '.'); addNews(nm(o) + ' תקפה את ' + nm(e) + ' לבקשתנו.', 'war'); }));
-    ask('sanc' + e, '🚫 תטילו סנקציות על ' + nm(e), 0.15 + friend, () => { S.sanc[o + '>' + e] = 1; say(o, 'them', 'הטלנו סנקציות על ' + nm(e) + '.'); });
-    ask('cut' + e, '✂️ תנתקו את היחסים עם ' + nm(e), 0.2 + friend, () => { addRel(o, e, -35); ['trade', 'alliance', 'nap'].forEach(t => { if (hasPact(o, e, t)) setPact(o, e, t, false); }); say(o, 'them', 'ניתקנו את הקשרים עם ' + nm(e) + '.'); });
+      say(o, 'them', 'הצבא שלנו יתקוף את ' + nm(e) + ' במשך ' + daysTxt(days) + '.'); addNews(nm(o) + ' תקפה את ' + nm(e) + ' לבקשתנו.', 'war'); }, e));
+    ask('sanc' + e, '🚫 תטילו סנקציות על ' + nm(e), 0.15 + friend, () => { S.sanc[o + '>' + e] = 1; say(o, 'them', 'הטלנו סנקציות על ' + nm(e) + '.'); }, e);
+    ask('cut' + e, '✂️ תנתקו את היחסים עם ' + nm(e), 0.28 + friend, () => { addRel(o, e, -35); ['trade', 'alliance', 'nap'].forEach(t => { if (hasPact(o, e, t)) setPact(o, e, t, false); }); say(o, 'them', 'ניתקנו את הקשרים עם ' + nm(e) + '.'); }, e);
     if (!w) ask('peace' + e, '🕊️ תשכנעו את ' + nm(e) + ' להתפייס איתנו', 0.25 + (rel(o, e) > 20 ? -0.15 : 0.1), () => { addRel(e, S.player, 20); addTension(e, -40); say(o, 'them', 'דיברנו עם ' + nm(e) + '. הם מוכנים לפתוח דף חדש.'); });
   });
   // offers
