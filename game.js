@@ -3210,16 +3210,24 @@ function chatOptions(o) {
     } else delete p.ask[o];
   }
   // requests
-  ask('cash', '💰 תשלחו לנו כסף', 0.25, () => { const a = Math.min(C.gdp * 0.003, me.gdp * 0.05 + 1); p.treasury += a; say(o, 'them', 'העברנו לכם ' + money(a) + '.'); });
-  ask('arms', '📦 תשלחו לנו נשק', 0.3, () => { const k = ['tanks', 'air', 'art', 'heli']; k.forEach(x => { me.inv[x] = (me.inv[x] || 0) + (C.inv[x] || 0) * 0.025; }); syncAllUnits(); say(o, 'them', 'משלוח של טנקים, מטוסים ותותחים בדרך אליכם.'); });
-  ask('troops', '🪖 תשלחו לנו חיילים', 0.4, () => { const n = (C.inv.troops || 0) * 0.03; me.inv.troops += n; syncAllUnits(); say(o, 'them', 'שלחנו ' + troopsPlain(n) + ' חיילים לעזרתכם.'); });
+  // amount chosen in the chat: 1 small, 2 medium, 3 big (bigger = harder to get)
+  const amt = (p.chatA = p.chatA || {})[o] || 1, mul = [0, 1, 2.5, 5][amt];
+  ask('cash', '💰 תשלחו לנו כסף (' + money(Math.min(C.gdp * 0.003 * mul, me.gdp * 0.03 * mul + 1)) + ')', 0.15 + amt * 0.1, () => { const a = Math.min(C.gdp * 0.003 * mul, me.gdp * 0.03 * mul + 1); p.treasury += a; say(o, 'them', 'העברנו לכם ' + money(a) + '.'); });
+  ask('arms', '📦 תשלחו לנו נשק', 0.2 + amt * 0.1, () => { ['tanks', 'air', 'art', 'heli'].forEach(x => { me.inv[x] = (me.inv[x] || 0) + (C.inv[x] || 0) * 0.025 * mul; }); syncAllUnits(); say(o, 'them', 'משלוח של טנקים, מטוסים ותותחים בדרך אליכם.'); });
+  ask('troops', '🪖 תשלחו לנו חיילים (' + troopsPlain((C.inv.troops || 0) * 0.03 * mul) + ')', 0.3 + amt * 0.1, () => { const n = (C.inv.troops || 0) * 0.03 * mul; me.inv.troops += n; syncAllUnits(); say(o, 'them', 'שלחנו ' + troopsPlain(n) + ' חיילים לעזרתכם.'); });
   ask('un', '🇺🇳 תתמכו בנו באו״ם', 0.05, () => { S.p.rep = clamp(S.p.rep + 3, 0, 100); say(o, 'them', 'נצביע איתכם ונדבר טוב עליכם.'); });
-  en.forEach(({ w, e }) => {
-    if (e === o || inWar(w, o)) return;
-    [30, 90, 180].forEach(days => ask('atk' + e + days, '🎯 תתקפו את ' + nm(e) + ' במשך ' + daysTxt(days), 0.35 + days / 900 + (rel(o, e) > 20 ? 0.3 : 0), () => {
-      joinSide(w, o, S.player); (S.p.help = S.p.help || []).push({ o, w: w.id, until: S.day + days });
-      say(o, 'them', 'המטוסים שלנו יתקפו את ' + nm(e) + ' במשך ' + daysTxt(days) + '.'); addNews(nm(o) + ' הצטרפה ללחימה נגד ' + nm(e) + ' לבקשתנו.', 'war'); }));
-    ask('sanc' + e, '🚫 תטילו סנקציות על ' + nm(e), 0.15 + (rel(o, e) > 20 ? 0.3 : 0), () => { S.sanc[o + '>' + e] = 1; say(o, 'them', 'הטלנו סנקציות על ' + nm(e) + '.'); });
+  // the target chosen in the chat search (any country) — plus our current enemies
+  const tg = (p.chatT = p.chatT || {})[o], targets = [...new Set([tg, ...en.map(x => x.e)].filter(e => e && S.c[e] && S.c[e].alive && e !== o && e !== S.player))];
+  targets.forEach(e => {
+    const w = S.wars.find(x => inWar(x, S.player) && inWar(x, e)), friend = rel(o, e) > 20 ? 0.3 : 0;
+    if (w && inWar(w, o)) return;
+    [30, 90, 180].forEach(days => ask('atk' + e + days, '🎯 תתקפו את ' + nm(e) + ' במשך ' + daysTxt(days), 0.35 + days / 900 + friend + (w ? 0 : 0.15), () => {
+      if (w) { joinSide(w, o, S.player); (S.p.help = S.p.help || []).push({ o, w: w.id, until: S.day + days }); }
+      else { const nw = declareWar(o, e, { noJoin: true }); if (nw) (S.p.help = S.p.help || []).push({ o, w: nw.id, until: S.day + days, own: 1 }); addRel(e, S.player, -10); }
+      say(o, 'them', 'הצבא שלנו יתקוף את ' + nm(e) + ' במשך ' + daysTxt(days) + '.'); addNews(nm(o) + ' תקפה את ' + nm(e) + ' לבקשתנו.', 'war'); }));
+    ask('sanc' + e, '🚫 תטילו סנקציות על ' + nm(e), 0.15 + friend, () => { S.sanc[o + '>' + e] = 1; say(o, 'them', 'הטלנו סנקציות על ' + nm(e) + '.'); });
+    ask('cut' + e, '✂️ תנתקו את היחסים עם ' + nm(e), 0.2 + friend, () => { addRel(o, e, -35); ['trade', 'alliance', 'nap'].forEach(t => { if (hasPact(o, e, t)) setPact(o, e, t, false); }); say(o, 'them', 'ניתקנו את הקשרים עם ' + nm(e) + '.'); });
+    if (!w) ask('peace' + e, '🕊️ תשכנעו את ' + nm(e) + ' להתפייס איתנו', 0.25 + (rel(o, e) > 20 ? -0.15 : 0.1), () => { addRel(e, S.player, 20); addTension(e, -40); say(o, 'them', 'דיברנו עם ' + nm(e) + '. הם מוכנים לפתוח דף חדש.'); });
   });
   // offers
   offer('gift', '🎁 נשלח לכם כסף', money(me.gdp * 0.002) + ' · אמון +1 · ' + nm(o) + ' +8', () => { if (!spend(me.gdp * 0.002)) return; say(o, 'me', 'קבלו מתנה מאיתנו: ' + money(me.gdp * 0.002) + '.'); addTrust(o, 1); addRel(o, S.player, 8); say(o, 'them', 'תודה רבה! לא נשכח.'); });
@@ -3235,11 +3243,27 @@ function chatHtml(o) {
   let h = '<p class="sub">יחסים ' + Math.round(rel(o, S.player)) + ' · אמון ' + sgn(trustOf(o)) + (hasPact(o, S.player, 'alliance') ? ' · ברית צבאית' : '') + '. כל טובה שמבקשים מורידה אמון; עזרה שנותנים מעלה אותו.</p><div class="chat">';
   if (!L.length) h += '<div class="msg them"><b>' + esc(LEADER(o)) + ':</b> שלום. במה נוכל לעזור?</div>';
   L.forEach(m => { h += '<div class="msg ' + m.w + '"><b>' + (m.w === 'me' ? 'אנחנו' : esc(C.he)) + ':</b> ' + esc(String(m.t).replace(/<[^>]+>/g, '')) + '</div>'; });
-  return h + '</div>';
+  h += '</div>';
+  // choose a target country (search) and how much to ask for
+  const p = S.p, tg = p.chatT && p.chatT[o], a = (p.chatA && p.chatA[o]) || 1;
+  h += '<div class="chatctl"><small>כמה לבקש:</small> ' + [[1, 'קצת'], [2, 'בינוני'], [3, 'הרבה']].map(([v, l]) => '<button class="b sm' + (a === v ? ' good' : '') + '" data-ca="' + v + '">' + l + '</button>').join('') +
+    '<div><small>מדינת יעד' + (tg ? ': <b>' + esc(nm(tg)) + '</b>' : '') + '</small> <input id="chatq" type="search" placeholder="חפש מדינה (למשל: רוסיה)" autocomplete="off"></div><div id="chatres"></div></div>';
+  return h;
 }
 function chatOpen(o) {
   if (!S.c[o] || o === S.player) return;
-  const build = () => ({ title: '💬 שיחה עם ' + S.c[o].he, html: chatHtml(o), col: 1, onShow: () => { const c = document.querySelector('#m-body .chat'); if (c) c.scrollTop = c.scrollHeight; },
+  const reb = () => { modalQ[0] = build(); showModal(); };
+  const build = () => ({ title: '💬 שיחה עם ' + S.c[o].he, html: chatHtml(o), col: 1, onShow: () => {
+      const c = document.querySelector('#m-body .chat'); if (c) c.scrollTop = c.scrollHeight;
+      document.querySelectorAll('#m-body [data-ca]').forEach(b => b.onclick = () => { (S.p.chatA = S.p.chatA || {})[o] = +b.dataset.ca; reb(); });
+      const q = document.getElementById('chatq'), res = document.getElementById('chatres');
+      if (q) q.oninput = () => {
+        const t = q.value.trim(); if (!t) { res.innerHTML = ''; return; }
+        const hits = alive().filter(id => id !== o && id !== S.player && (S.c[id].he.includes(t) || (S.c[id].en || '').toLowerCase().includes(t.toLowerCase()))).slice(0, 6);
+        res.innerHTML = hits.map(id => '<button class="b sm" data-ct="' + id + '">' + esc(S.c[id].he) + '</button>').join('') || '<small>לא נמצאה מדינה</small>';
+        res.querySelectorAll('[data-ct]').forEach(b => b.onclick = () => { (S.p.chatT = S.p.chatT || {})[o] = b.dataset.ct; reb(); });
+      };
+    },
     buttons: chatOptions(o).map(x => ({ label: x.label, cls: x.dis ? 'dis' : '', keep: true, fn: () => { if (x.dis) return; const lab = x.label.replace(/<small.*$/, '').replace(/^\S+\s/, ''); if (/^ת/.test(lab)) say(o, 'me', lab + '?'); x.fn(); modalQ[0] = build(); showModal(); renderAll(); } }))
       .concat([{ label: 'סיום השיחה' }]) });
   modal(build());
@@ -3260,7 +3284,8 @@ function helpersWeekly() {
   const p = S.p; if (!p || !p.help || !p.help.length) return;
   p.help = p.help.filter(h => {
     const w = S.wars.find(x => x.id === h.w); if (!w || !S.c[h.o] || !S.c[h.o].alive) return false;
-    const e = enemyLeaderFor(w, S.player);
+    const e = enemyLeaderFor(w, h.o);
+    if (S.day >= h.until && h.own) { applyPeace(w, 'white', w.a, w.b); toast(nm(h.o) + ' סיימה את המתקפה על ' + nm(e)); return false; }
     if (S.day >= h.until) {
       [w.A, w.B].forEach(side => { const i = side.indexOf(h.o); if (i > 0) side.splice(i, 1); });
       toast(nm(h.o) + ' סיימה את התקיפות נגד ' + nm(e)); addNews(nm(h.o) + ' סיימה את הסיוע הצבאי שלנו נגד ' + nm(e) + '.', 'dip'); needMapRecolor = true; return false;
