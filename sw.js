@@ -1,5 +1,5 @@
 // offline cache: everything the game needs is stored on the phone after the first visit
-const V = 'w2026-v4';
+const V = 'w2026-v6';
 const FILES = ['./', 'index.html', 'game.js', 'world.js', 'countries-data.js', 'countries-data.sample.js', 'cities.js', 'cities.sample.js',
   'vendor/d3.min.js', 'vendor/topojson-client.min.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(V).then(c => c.addAll(FILES)).then(() => self.skipWaiting())); });
