@@ -5405,11 +5405,33 @@ function cityCls(st) {
   return !o ? 'no' : !me ? 'ne' : o === me ? 'me' : atWar(o, me) ? 'en' : isAlly(o, me) ? 'al' : 'ne';
 }
 const ovl = (b, list) => { for (const q of list) if (b[0] < q[2] && b[2] > q[0] && b[1] < q[3] && b[3] > q[1]) return true; return false; };
+let gCNames = null;
+function drawCountryNames() {
+  if (!gCNames) gCNames = d3.select(svg.node()).append('g').attr('class', 'cnames').style('pointer-events', 'none');
+  gCNames.selectAll('*').remove();
+  const me = S.player, occ = [], list = alive().map(id => ({ id, c: S.c[id] })).sort((a, b) => b.c.pop - a.c.pop);
+  for (const { id, c } of list) {
+    const t = mainTid(id); if (!t || !TERR[t]) continue;
+    const p = TERR[t].c; if (GLOBE && gFront(p) < 0.15) continue;
+    const s = toScreen(p); if (!s || !(s[0] > 0 && s[1] > 40 && s[0] < W && s[1] < H - 30)) continue;
+    const fs = clamp(8 + Math.log10(c.pop + 1) * 4.2, 9, 19) * (id === me ? 1.15 : 1), w = c.he.length * fs * 0.55, h = fs * 1.1;
+    const box = [s[0] - w / 2, s[1] - h / 2, s[0] + w / 2, s[1] + h / 2];
+    if (id !== me && occ.some(b => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) continue;
+    occ.push(box);
+    gCNames.append('text').attr('x', s[0]).attr('y', s[1]).attr('font-size', fs)
+      .attr('class', id === me ? 'me' : me && atWar(id, me) ? 'en' : '').text(c.he);
+  }
+}
 function drawCities() {
   if (!gCities || !S || !MAP_PROJ) return;
   citiesDirty = false; lastCityDraw = performance.now();
   cityT0 = { x: curT.x, y: curT.y, k: curT.k }; gCities.removeAttribute('transform');
   if (!S.ct || !CITY.length) { CEL.forEach(g => g.remove()); CEL.clear(); return; }
+  // far away: no cities at all, only big country names
+  const far = GLOBE ? curK < gKfit * 2.4 : curT.k < 2.4;
+  if (gMarks) gMarks.selectAll('text').style('display', far ? 'none' : null);
+  if (far) { CEL.forEach(g => g.remove()); CEL.clear(); drawCountryNames(); return; }
+  if (gCNames) gCNames.selectAll('*').remove();
   const me = S.player, k = curT.k;
   // level of detail: world view = capitals of big countries (and ours); zooming in brings smaller cities
   const minP = k < 1.6 ? 1e9 : k < 2.6 ? 5 : k < 4.5 ? 1.8 : k < 8 ? 0.7 : k < 14 ? 0.3 : k < 24 ? 0.12 : 0;
