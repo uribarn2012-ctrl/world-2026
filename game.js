@@ -2034,7 +2034,7 @@ const EV = [
    (about one every 1–2 months, see eventsDay) and always reach the leader. rl: {id: change} relations with named
    countries · wr: shows "risk of war" (the real risk is evWar in f) · a choice's nx: [event id, days] = a follow-up. */
 const evInv = (k, f) => { const c = P(); c.inv[k] = Math.max(0, Math.round((c.inv[k] || 0) * (1 + f))); if (S.units) syncAllUnits(); };
-const IL = ['376'], KR = ['410'], US = ['840'], CN = ['156'], RU = ['643'], UA = ['804'], IR = ['364'], TW = ['158'], IN = ['356'], PK = ['586'], KP = ['408'];
+const IL = ['376'], KR = ['410'], US = ['840'], CNL = ['156'], RU = ['643'], UA = ['804'], IR = ['364'], TW = ['158'], IN = ['356'], PK = ['586'], KP = ['408'];
 const SAHEL = ['466', '854', '562', '148'], PACIFIC = ['242', '598', '090', '548', '882', '776', '296', '798', '584', '583', '585', '520'];
 const COUNTRY_EV = [
   /* ---------- Israel ---------- */
@@ -2113,21 +2113,21 @@ const COUNTRY_EV = [
     ch: [C_('לכבד את עצמאות הבנק', { gv: -0.001, gd: 365, rep: 1 }), C_('ללחוץ להוריד ריבית', { gv: 0.002, gd: 365, rep: -2, at: -2, ad: 365 })] },
 
   /* ---------- China ---------- */
-  { id: 'cn_taiwan', cc: CN, c: 'intl', w: c => evAl('158') ? 1.4 : 0, cd: 480, r: 'def', t: 'מתיחות במצר טייוואן', x: 'משלחת של חברי קונגרס אמריקאים מבקרת בטייוואן. בצבא מציעים תרגיל אש חי סביב האי.',
+  { id: 'cn_taiwan', cc: CNL, c: 'intl', w: c => evAl('158') ? 1.4 : 0, cd: 480, r: 'def', t: 'מתיחות במצר טייוואן', x: 'משלחת של חברי קונגרס אמריקאים מבקרת בטייוואן. בצבא מציעים תרגיל אש חי סביב האי.',
     ch: [C_('תרגיל מצור רחב', { rl: { '158': -15, '840': -8 }, ap: 3, rep: -3 }), C_('גינוי וסנקציות על חברות', { rl: { '158': -5, '840': -3 }, ap: 1 }), C_('איפוק', { ap: -2, rep: 1 })] },
-  { id: 'cn_hk', cc: CN, c: 'dom', w: 1, cd: 600, r: 'int', t: 'מחאות בהונג קונג', x: 'צעירים בהונג קונג מפגינים נגד חוק ביטחון חדש. העולם צופה, והבורסה המקומית צונחת.',
+  { id: 'cn_hk', cc: CNL, c: 'dom', w: 1, cd: 600, r: 'int', t: 'מחאות בהונג קונג', x: 'צעירים בהונג קונג מפגינים נגד חוק ביטחון חדש. העולם צופה, והבורסה המקומית צונחת.',
     ch: [C_('מעצרים ודיכוי', { ap: 1, rep: -5, rd: -4, un: -1 }), C_('דיאלוג עם המפגינים', { rep: 2, ap: -1, un: 1 }), C_('לדחות את החוק', { ap: -2, rep: 3 })] },
-  { id: 'cn_prop', cc: CN, c: 'dom', w: 1.2, cd: 600, r: 'fin', t: 'קריסת ענקית נדל״ן', x: 'חברת נדל״ן ענקית לא עומדת בתשלומים. מיליוני דירות לא גמורות, ומשפחות ששילמו מראש מפגינות.',
+  { id: 'cn_prop', cc: CNL, c: 'dom', w: 1.2, cd: 600, r: 'fin', t: 'קריסת ענקית נדל״ן', x: 'חברת נדל״ן ענקית לא עומדת בתשלומים. מיליוני דירות לא גמורות, ומשפחות ששילמו מראש מפגינות.',
     ch: [C_('חילוץ ממשלתי', { m: -0.003, ap: 2 }), C_('לחייב בנקים להשלים בנייה', { gv: -0.001, gd: 730, ap: 1 }), C_('לתת לה לקרוס', { gdp: -0.006, ap: -3, un: 1 })] },
-  { id: 'cn_xj', cc: CN, c: 'intl', w: 1, cd: 600, r: 'fo', t: 'סנקציות בגלל שינג׳יאנג וטיבט', x: 'מדינות המערב מטילות סנקציות על פקידים וחברות בגלל דיווחים על מחנות מעצר ופגיעה בזכויות אדם בשינג׳יאנג ובטיבט.',
+  { id: 'cn_xj', cc: CNL, c: 'intl', w: 1, cd: 600, r: 'fo', t: 'סנקציות בגלל שינג׳יאנג וטיבט', x: 'מדינות המערב מטילות סנקציות על פקידים וחברות בגלל דיווחים על מחנות מעצר ופגיעה בזכויות אדם בשינג׳יאנג ובטיבט.',
     ch: [C_('סנקציות נגדיות', { rd: -5, ap: 2 }), C_('ביקור מוגבל של משקיפים', { rep: 3, rd: 2, ap: -1 }), C_('להכחיש ולהתעלם', { rep: -2, gv: -0.001, gd: 365 })] },
-  { id: 'cn_chips', cc: CN, c: 'intl', w: c => evAl('840') ? 1.2 : 0, cd: 540, r: 'fin', t: 'אמברגו שבבים אמריקאי', x: 'וושינגטון אסרה למכור לנו שבבים מתקדמים ומכונות לייצור שבבים, ולוחצת על בעלות בריתה להצטרף.',
+  { id: 'cn_chips', cc: CNL, c: 'intl', w: c => evAl('840') ? 1.2 : 0, cd: 540, r: 'fin', t: 'אמברגו שבבים אמריקאי', x: 'וושינגטון אסרה למכור לנו שבבים מתקדמים ומכונות לייצור שבבים, ולוחצת על בעלות בריתה להצטרף.',
     ch: [C_('תוכנית לאומית לשבבים', { m: -0.003, gv: 0.001, gd: 1095 }), C_('לעצור ייצוא מתכות נדירות', { rl: { '840': -10 }, gv: -0.001, gd: 365, ap: 2 }), C_('לקנות דרך מדינות שלישיות', { rep: -2, m: -0.0005 })] },
-  { id: 'cn_lock', cc: CN, c: 'dom', w: 0.8, cd: 900, r: 'int', t: 'התפרצות נגיף בעיר ענק', x: 'נגיף חדש התגלה בעיר של 20 מיליון תושבים. בבייג׳ינג מתלבטים: סגר מלא או סיכון.',
+  { id: 'cn_lock', cc: CNL, c: 'dom', w: 0.8, cd: 900, r: 'int', t: 'התפרצות נגיף בעיר ענק', x: 'נגיף חדש התגלה בעיר של 20 מיליון תושבים. בבייג׳ינג מתלבטים: סגר מלא או סיכון.',
     ch: [C_('סגר הרמטי', { gdp: -0.005, ap: -2, un: 1 }), C_('בדיקות ובידוד ממוקד', { m: -0.001, ap: 1 }), C_('לפתוח הכול', { ap: -2, pop: -0.0005, gv: 0.001, gd: 180 })] },
-  { id: 'cn_bri', cc: CN, c: 'intl', w: 1, cd: 600, r: 'fin', t: 'חובות "החגורה והדרך"', x: 'כמה מדינות שקיבלו מאיתנו הלוואות לנמלים ולמסילות לא מצליחות להחזיר. אחת מהן מציעה לנו את הנמל במקום.',
+  { id: 'cn_bri', cc: CNL, c: 'intl', w: 1, cd: 600, r: 'fin', t: 'חובות "החגורה והדרך"', x: 'כמה מדינות שקיבלו מאיתנו הלוואות לנמלים ולמסילות לא מצליחות להחזיר. אחת מהן מציעה לנו את הנמל במקום.',
     ch: [C_('לקחת את הנמל', { m: 0.001, rep: -3 }), C_('למחוק חלק מהחוב', { m: -0.002, rep: 4 }), C_('לדחות את התשלומים', { rep: 1 })] },
-  { id: 'cn_youth', cc: CN, c: 'dom', w: 1, cd: 600, r: 'fin', t: 'אבטלת צעירים', x: 'אחד מכל חמישה צעירים בערים מובטל. ברשתות מדברים על "לשכב שטוח" — לוותר על המרוץ לקריירה.',
+  { id: 'cn_youth', cc: CNL, c: 'dom', w: 1, cd: 600, r: 'fin', t: 'אבטלת צעירים', x: 'אחד מכל חמישה צעירים בערים מובטל. ברשתות מדברים על "לשכב שטוח" — לוותר על המרוץ לקריירה.',
     ch: [C_('תוכנית תעסוקה ממשלתית', { m: -0.0015, ap: 2 }), C_('הקלות להייטק ולסטארט-אפים', { gv: 0.001, gd: 730, ap: 1 }), C_('לשלוח צעירים לכפרים', { ap: -2, un: 1 })] },
 
   /* ---------- Russia ---------- */
@@ -4511,7 +4511,7 @@ function initMap() {
   });
   zoom = d3.zoom().scaleExtent([0.8, 60]).translateExtent([[-W, -H], [W * 2, H * 2]])
     .on('start', () => { zooming = true; hideTip(); })
-    .on('zoom', ev => { gRoot.attr('transform', ev.transform); curT = ev.transform; if (Math.abs(ev.transform.k - curK) > 0.01) { curK = ev.transform.k; scaleMarks(); if (fanIds && Math.abs(curK / fanK - 1) > 0.25) fanIds = null; } drawUnits(); cityFollow(); })
+    .on('zoom', ev => { gRoot.attr('transform', ev.transform); curT = ev.transform; if (Math.abs(ev.transform.k - curK) > 0.01) { curK = ev.transform.k; scaleMarks(); if (fanIds && Math.abs(curK / fanK - 1) > 0.25) fanIds = null; } drawUnits(); cityFollow(); moveCountryNames(); })
     .on('end', () => { if (panRaf) return; zooming = false; if (Math.abs(curK - (drawDeco.k || 0)) > 0.01) drawDeco(); if (!cityT0 || cityT0.x !== curT.x || cityT0.y !== curT.y || cityT0.k !== curT.k) drawCities(); });
   if (GP) { MAP_PROJ = globeWrap(GP); globeHooks(); }
   else { svg.call(zoom).on('dblclick.zoom', null); MAP_PROJ = projection; }
@@ -4731,7 +4731,7 @@ function gXf() { const k = curK; curT = d3.zoomIdentity.translate(gSX - k * W / 
 function gRender(low) {
   if (!GP || !svg) return;
   gSetC(); GP.rotate([-gC[0], -gC[1]]);
-  const k = curK; gXf();
+  const k = curK; gXf(); moveCountryNames();
   const m = 30 / k, x0 = -curT.x / k, y0 = -curT.y / k;
   GP.clipExtent([[x0 - m, y0 - m], [x0 + W / k + m, y0 + H / k + m]]);
   if (pathGen.digits) pathGen.digits(k < 4 ? 1 : k < 30 ? 2 : 3);
@@ -5408,7 +5408,7 @@ const ovl = (b, list) => { for (const q of list) if (b[0] < q[2] && b[2] > q[0] 
 let gCNames = null;
 function drawCountryNames() {
   if (!gCNames) gCNames = d3.select(svg.node()).append('g').attr('class', 'cnames').style('pointer-events', 'none');
-  gCNames.selectAll('*').remove();
+  gCNames.selectAll('*').remove(); NAMEL = [];
   const me = S.player, occ = [], list = alive().map(id => ({ id, c: S.c[id] })).sort((a, b) => b.c.pop - a.c.pop);
   for (const { id, c } of list) {
     const t = mainTid(id); if (!t || !TERR[t]) continue;
@@ -5418,8 +5418,24 @@ function drawCountryNames() {
     const box = [s[0] - w / 2, s[1] - h / 2, s[0] + w / 2, s[1] + h / 2];
     if (id !== me && occ.some(b => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) continue;
     occ.push(box);
-    gCNames.append('text').attr('x', s[0]).attr('y', s[1]).attr('font-size', fs)
-      .attr('class', id === me ? 'me' : me && atWar(id, me) ? 'en' : '').text(c.he);
+    const el = gCNames.append('text').attr('x', s[0]).attr('y', s[1]).attr('font-size', fs)
+      .attr('class', id === me ? 'me' : me && atWar(id, me) ? 'en' : '').text(c.he).node();
+    NAMEL.push({ p, el });
+  }
+  cnLK = curK;
+}
+// every frame while the map moves: slide the names with it (cheap — no re-layout until it stops)
+let NAMEL = [], cnLK = 0;
+function moveCountryNames() {
+  if (!NAMEL.length || !gCNames) return;
+  const far = GLOBE ? curK < gKfit * 2.4 : curT.k < 2.4;
+  if (!far) { gCNames.selectAll('*').remove(); NAMEL = []; return; }
+  const sc = Math.sqrt(curK / (cnLK || curK));
+  for (const n of NAMEL) {
+    if (GLOBE && gFront(n.p) < 0.1) { n.el.style.display = 'none'; continue; }
+    const s = toScreen(n.p); if (!s) { n.el.style.display = 'none'; continue; }
+    n.el.style.display = ''; n.el.setAttribute('x', s[0]); n.el.setAttribute('y', s[1]);
+    n.el.style.transform = sc !== 1 ? 'scale(' + sc + ')' : ''; n.el.style.transformOrigin = s[0] + 'px ' + s[1] + 'px';
   }
 }
 function drawCities() {
@@ -5431,7 +5447,7 @@ function drawCities() {
   const far = GLOBE ? curK < gKfit * 2.4 : curT.k < 2.4;
   if (gMarks) gMarks.selectAll('text').style('display', far ? 'none' : null);
   if (far) { CEL.forEach(g => g.remove()); CEL.clear(); drawCountryNames(); return; }
-  if (gCNames) gCNames.selectAll('*').remove();
+  if (gCNames) { gCNames.selectAll('*').remove(); NAMEL = []; }
   const me = S.player, k = curT.k;
   // level of detail: world view = capitals of big countries (and ours); zooming in brings smaller cities
   const minP = k < 1.6 ? 1e9 : k < 2.6 ? 5 : k < 4.5 ? 1.8 : k < 8 ? 0.7 : k < 14 ? 0.3 : k < 24 ? 0.12 : 0;
